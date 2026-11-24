@@ -563,6 +563,22 @@ class PreviewToolsTests(unittest.TestCase):
                 if sock is not None:
                     sock.close()
 
+    def test_launch_warns_when_app_exits_early_without_cdp(self) -> None:
+        mock_proc = mock.MagicMock()
+        mock_proc.poll.return_value = 0
+        mock_proc.wait.return_value = 0
+        with mock.patch("atom_launch._launch_windows", return_value=(mock_proc, None)), \
+             mock.patch("atom_launch._launch_posix", return_value=(mock_proc, None)), \
+             mock.patch("atom_launch.ensure_hooks_installed", return_value=None), \
+             mock.patch("atom_launch._acquire_lock", return_value=True), \
+             mock.patch("atom_launch._open_notify_socket", return_value=(None, None, None)), \
+             mock.patch("atom_launch.log") as mock_log:
+            ret = atom_launch.main()
+            self.assertEqual(ret, 0)
+            mock_log.assert_called_with(
+                "Antigravity exited immediately. If it was already running, fully quit all existing instances and relaunch."
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

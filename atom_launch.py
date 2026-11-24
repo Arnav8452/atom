@@ -1229,13 +1229,21 @@ def main() -> int:
             signal.signal(sig, forward_signal)
 
         if cdp is None:
+            if is_primary:
+                if app.poll() == 0:
+                    log("Antigravity exited immediately. If it was already running, fully quit all existing instances and relaunch.")
+                elif app.poll() is not None:
+                    log(f"Antigravity exited with code {app.poll()}.")
+                else:
+                    log("DevTools connection timed out.")
             return app.wait()
 
         atom = Atom(cdp)
         try:
             atom.start()
         except OSError:
-            pass  # app exited immediately (already running); fall through to wait()
+            if is_primary and app.poll() == 0:
+                log("Antigravity exited immediately. If it was already running, fully quit all existing instances and relaunch.")
 
         read_sel = cdp.read_selectable()
         write_sel = cdp.write_selectable()

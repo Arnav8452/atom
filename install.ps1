@@ -111,4 +111,7 @@ foreach ($lnkPath in @($StartMenuShortcut, $DesktopShortcut)) {
   Say "shortcut: $lnkPath"
 }
 
-Say "done. Quit Antigravity and start 'Antigravity (Atom)' from your Start Menu or Desktop."
+if (Get-Process Antigravity -ErrorAction SilentlyContinue) {
+  Say "note: Antigravity is running. Fully quit it (check the system tray) before starting 'Antigravity (Atom)'."
+}
+Say "done. Start 'Antigravity (Atom)' from your Start Menu or Desktop."
