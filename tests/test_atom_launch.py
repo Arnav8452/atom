@@ -568,7 +568,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
-@unittest.skipIf(os.name == "nt", "Linux binary lookup")
+@unittest.skipUnless(sys.platform.startswith("linux"), "Linux binary lookup")
 class LinuxAppBinaryTests(unittest.TestCase):
     """Finding Antigravity when it was installed by hand, not by a package."""
 
@@ -618,5 +618,5 @@ class LinuxAppBinaryTests(unittest.TestCase):
     def test_skips_atom_wrapper_scripts(self) -> None:
         self._exe(self.home / "Antigravity" / "antigravity", "#!/bin/sh\nexec python3 ~/atom/atom_launch.py\n")
         self.assertEqual(atom_launch._linux_app_binary(), "/opt/Antigravity/antigravity")  # not found: default
-        real = self._exe(self.home / "Antigravity" / "Antigravity")
+        real = self._exe(self.home / "Antigravity-2.30" / "Antigravity")
         self.assertEqual(atom_launch._linux_app_binary(), str(real))
