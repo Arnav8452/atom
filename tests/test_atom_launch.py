@@ -534,6 +534,19 @@ class PreviewToolsTests(unittest.TestCase):
             finally:
                 atom_hook.HOME = orig_home
 
+    def test_notify_socket_permissions_owner_only(self) -> None:
+        if not hasattr(socket, "AF_UNIX") or os.name == "nt":
+            self.skipTest("AF_UNIX POSIX socket permissions only apply on POSIX")
+        with tempfile.TemporaryDirectory() as tmp:
+            sock, sock_path, _ = atom_launch._open_notify_socket(Path(tmp))
+            try:
+                assert sock is not None and sock_path is not None
+                mode = sock_path.stat().st_mode & 0o777
+                self.assertEqual(mode, 0o600)
+            finally:
+                if sock is not None:
+                    sock.close()
+
 
 if __name__ == "__main__":
     unittest.main()

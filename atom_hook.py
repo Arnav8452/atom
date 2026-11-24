@@ -232,7 +232,7 @@ def detect_emotion(text: str) -> str | None:
 def write_json(path: str, data: dict) -> None:
     parent = os.path.dirname(path)
     if parent:
-        os.makedirs(parent, exist_ok=True)
+        os.makedirs(parent, mode=0o700, exist_ok=True)
     tmp = os.path.join(parent, f".{os.path.basename(path)}.{os.getpid()}.tmp")
     try:
         with open(tmp, "w", encoding="utf-8") as fh:

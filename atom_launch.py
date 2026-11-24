@@ -954,6 +954,7 @@ def _open_notify_socket(home: Path) -> tuple[socket.socket | None, Path | None, 
         sock.setblocking(False)
         try:
             sock.bind(str(sock_path))
+            os.chmod(sock_path, 0o600)
             return sock, sock_path, None
         except OSError as e:
             log(f"notify socket disabled: {e!r}")
@@ -1082,7 +1083,12 @@ def main() -> int:
             except OSError:
                 os.open(os.devnull, os.O_RDWR)
 
-    HOME.mkdir(parents=True, exist_ok=True)
+    HOME.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if os.name != "nt":
+        try:
+            os.chmod(HOME, 0o700)
+        except OSError:
+            pass
     ensure_hooks_installed()
     lock_file = open(HOME / "launcher.lock", "a+", encoding="utf-8")
     is_primary = _acquire_lock(lock_file)

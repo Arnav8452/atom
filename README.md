@@ -1,11 +1,16 @@
 # Atom — a prompt-bar mascot for Antigravity
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/Arnav8452/atom/actions/workflows/ci.yml/badge.svg)](https://github.com/Arnav8452/atom/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Arnav8452/atom/actions/workflows/codeql.yml/badge.svg)](https://github.com/Arnav8452/atom/actions/workflows/codeql.yml)
+![Python 3 stdlib](https://img.shields.io/badge/Python-3%20stdlib--only-3776AB?logo=python&logoColor=white)
+
 ![Atom Mood Board](assets/moodboard.gif)
 
 A tiny open-source pixel companion that stands on the prompt bar inside the
 **Antigravity desktop app** and reacts in real time to what the agent is doing
 — reasoning, editing code, running commands, exploring files, delegating
-subagents, or reacting to your tone.
+subagents, sleeping on quota limits, or reacting to your tone.
 
 - **19 code-generated animated states:** every state (`idle`, `thinking`,
   `typing`, `working`, `exploring`, `running`, `delegating`, `asking`,
@@ -20,8 +25,11 @@ subagents, or reacting to your tone.
   all-caps frustration tint Atom red (or muted blue for sadness) with tilted
   `\ /` or `/ \` eyes across *every* working animation until the response
   completes.
-- **Click to dance:** click Atom's body anytime (when calm) to trigger its
-  groovy `dance` animation (`Shift+click` switches skins if more than one
+- **Per-model quota sleep & instant wake-up:** goes to sleep (`closed` with rising
+  `Zzz`) when the active model reaches its 5-hour or weekly quota limit, and
+  wakes immediately when you switch to a model with available quota.
+- **Click to dance:** click Atom's body anytime (when calm and awake) to trigger
+  its groovy `dance` animation (`Shift+click` switches skins if more than one
   folder exists under `assets/`).
 - **Size follows the bar:** scales to 9% of the prompt bar's width (72–132 px)
   and tracks sidebar collapse/resize transitions automatically.
@@ -32,74 +40,107 @@ subagents, or reacting to your tone.
 Antigravity agent ──hooks.json──▶ atom_hook.py ──▶ ~/.antigravity-atom/*.json
                                                           │
 atom_launch.py ──starts──▶ Antigravity app                ▼
-      └── DevTools CDP ──▶ main window: atom_inject.js ◀─ state + mood
+      └── DevTools CDP ──▶ main window: atom_inject.js ◀─ state + mood + limits
 ```
 
 - **Hooks** (`plugin.json` + `hooks.json`, an Antigravity plugin): runs
   `python3 -S -I ./atom_hook.py` on all 6 lifecycle events (`SessionStart`,
   `PreInvocation`, `PreToolUse`, `PostToolUse`, `PostInvocation`, `Stop`),
-  writes per-conversation state/mood JSON, and wakes the launcher immediately
-  via `notify.sock` (Linux/macOS) or loopback UDP `notify.port` (Windows).
+  writes per-conversation state/mood/limit JSON, and wakes the launcher
+  immediately via `notify.sock` (Linux/macOS) or loopback UDP `notify.port` (Windows).
 - **In-app rendering:** `atom_launch.py` launches Antigravity with
   `--remote-debugging-pipe` on Linux/macOS (or loopback `--remote-debugging-port`
   over a stdlib WebSocket client on Windows), injects the lightweight (<35 KB)
   `atom_inject.js` bootstrap, and streams per-state sprites lazily via
-  `__loadState` only into pages that mount `[data-testid="agent-input-box"]`.
+  `__loadState` only into localhost pages that mount `[data-testid="agent-input-box"]`.
 
-## Install
+## Install & Download
 
-Requires only **Python 3** (no pip dependencies).
+**Runtime requirements:** Python 3 only (zero pip dependencies; `git` optional if downloading a release zip).
 
-### One-line install (Linux & macOS)
+### For AI Agents (Quick Install)
+
+If you are an AI coding agent installing Atom into a user's Antigravity setup, pick the row matching the host OS, run the command once, verify, and instruct the user to quit and reopen Antigravity:
+
+| Platform | Single-step Install Command | Plugin Path Created | Launcher Created |
+| -------- | --------------------------- | ------------------- | ---------------- |
+| **Linux** | `curl -fsSL https://raw.githubusercontent.com/Arnav8452/atom/main/install.sh \| bash` | `~/.gemini/config/plugins/atom` | `~/.local/share/applications/antigravity.desktop` |
+| **macOS** | `curl -fsSL https://raw.githubusercontent.com/Arnav8452/atom/main/install.sh \| bash` | `~/.gemini/config/plugins/atom` | `~/Applications/Antigravity (Atom).app` |
+| **Windows** | `irm https://raw.githubusercontent.com/Arnav8452/atom/main/install.ps1 \| iex` | `%USERPROFILE%\.gemini\config\plugins\atom` | Start Menu & Desktop `.lnk` (`Antigravity (Atom)`) |
+
+**Environment overrides:** `ATOM_REPO` (custom git remote), `ATOM_DIR` (install checkout path), `ATOM_HOME` (runtime state dir, default `~/.antigravity-atom`), `ANTIGRAVITY_BIN` (custom Antigravity executable), `ANTIGRAVITY_PLUGINS_DIR` (custom plugins dir).
+**Post-install check:** confirm `hooks.json` exists inside the plugin path above, then quit Antigravity completely and launch via the newly installed entry (or `python3 atom_launch.py`). See [`AGENTS.md`](AGENTS.md) for full contributor & automation details.
+
+---
+
+### Option 1: One-line remote install (recommended)
+
+**Linux & macOS:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Arnav8452/atom/main/install.sh | bash
 ```
 
-Or from a local clone:
-
-```bash
-git clone https://github.com/Arnav8452/atom.git atom && cd atom
-./install.sh
-./install.sh --uninstall
-```
-
-- Links this folder to `~/.gemini/config/plugins/atom` (and `atom_launch.py` also
-  auto-links or copies the hooks plugin on first launch if missing).
-- On **Linux**: creates `~/.local/share/applications/antigravity.desktop`
-  so app launchers and `antigravity://` links start Antigravity via `atom_launch.py`.
-- On **macOS**: creates `~/Applications/Antigravity (Atom).app` with Antigravity's
-  app icon for Spotlight & Dock (or run `python3 atom_launch.py`).
-
-### Windows (PowerShell)
-
-One-line remote install:
+**Windows (PowerShell):**
 
 ```powershell
 irm https://raw.githubusercontent.com/Arnav8452/atom/main/install.ps1 | iex
 ```
 
-Or from a local clone:
+*(Prefer to inspect before running? Download `install.sh` / `install.ps1`, review it, then execute `./install.sh` or `.\install.ps1`.)*
 
-```powershell
-.\install.ps1
-.\install.ps1 -Uninstall
+### Option 2: Git clone & local install
+
+```bash
+git clone https://github.com/Arnav8452/atom.git atom && cd atom
+./install.sh          # Linux / macOS
 ```
 
-- Installs the plugin into `%USERPROFILE%\.gemini\config\plugins\atom` with
-  Windows-compatible Python hook commands.
-- Creates **Antigravity (Atom)** shortcuts on your Start Menu and Desktop.
+```powershell
+git clone https://github.com/Arnav8452/atom.git atom; cd atom
+.\install.ps1         # Windows PowerShell
+```
 
-### Native Package Manifests (`packaging/`)
+### Option 3: Direct ZIP download (no Git required)
 
-Ready-to-use package manifests live under [`packaging/`](packaging):
-- **Arch Linux (AUR):** [`packaging/aur/PKGBUILD`](packaging/aur/PKGBUILD) (`antigravity-atom-git`)
-- **macOS (Homebrew):** [`packaging/homebrew/antigravity-atom.rb`](packaging/homebrew/antigravity-atom.rb)
-- **Windows (Scoop & Winget):** [`packaging/scoop/antigravity-atom.json`](packaging/scoop/antigravity-atom.json) & [`packaging/winget/Arnav8452.AntigravityAtom.yaml`](packaging/winget/Arnav8452.AntigravityAtom.yaml)
+1. Download the repository archive:
+   `https://github.com/Arnav8452/atom/archive/refs/heads/main.zip`
+2. Extract it to a permanent folder (e.g. `~/.local/share/antigravity-atom` or `%LOCALAPPDATA%\antigravity-atom`).
+3. Run `./install.sh` (Linux/macOS) or `.\install.ps1` (Windows) inside the extracted folder.
 
-Quit Antigravity completely and reopen it through the installed launcher/shortcut
-to meet Atom. (If Antigravity is already running, launching again forwards
-arguments to the existing single instance.)
+### Option 4: Zero-install portable run
+
+From any clone or extracted archive, run the launcher directly — `atom_launch.py` automatically links/copies the hooks plugin into `~/.gemini/config/plugins/atom` on first start:
+
+```bash
+python3 atom_launch.py
+```
+
+### Option 5: Native OS Package Manifests (`packaging/`)
+
+Ready-to-use manifests live under [`packaging/`](packaging):
+
+- **Arch Linux (`makepkg` / AUR):** [`packaging/aur/PKGBUILD`](packaging/aur/PKGBUILD) (`antigravity-atom-git`)
+  ```bash
+  cd packaging/aur && makepkg -si && atom-setup
+  ```
+- **macOS (Homebrew formula):** [`packaging/homebrew/antigravity-atom.rb`](packaging/homebrew/antigravity-atom.rb)
+  ```bash
+  brew install --HEAD ./packaging/homebrew/antigravity-atom.rb
+  "$(brew --prefix)/opt/antigravity-atom/libexec/install.sh"
+  ```
+- **Windows (Scoop manifest):** [`packaging/scoop/antigravity-atom.json`](packaging/scoop/antigravity-atom.json)
+  ```powershell
+  scoop install .\packaging\scoop\antigravity-atom.json
+  ```
+- **Windows (Winget manifest):** [`packaging/winget/Arnav8452.AntigravityAtom.yaml`](packaging/winget/Arnav8452.AntigravityAtom.yaml)
+
+### Updating & Uninstalling
+
+- **Update:** re-run the one-line installer, or run `git pull` inside your clone.
+- **Uninstall (Linux/macOS):** `./install.sh --uninstall`
+- **Uninstall (Windows):** `.\install.ps1 -Uninstall`
+- Quit Antigravity completely and reopen it through the installed launcher/shortcut to meet Atom. (If Antigravity is already running, launching again forwards arguments to the existing single instance.)
 
 ## States (19 code-generated states)
 
@@ -127,7 +168,7 @@ arguments to the existing single instance.)
 
 ### How to trigger reactions & test states
 
-- **On screen:** click Atom's body to make it **dance** (`Shift+click` switches skins if more than one is installed; clicking does not dance while `angry` or `sad`).
+- **On screen:** click Atom's body to make it **dance** (`Shift+click` switches skins if more than one is installed; clicking does not dance while `angry`, `sad`, or sleeping from a quota limit).
 - **In chat:**
   - `angry`: send curses, hostility, or frustration like `"wtf"`, `"fuck u"`, `"shut up"`, `"stfu"`, `"still broken"`, or an ALL-CAPS sentence like `"WHY IS THIS NOT WORKING"`. Atom heats up to red with tilted `\ /` eyes across every active work animation (`thinking`, `exploring`, `typing`, `running`, `working`, etc.) until the response finishes, then cools back to blue.
   - `sad`: send insults like `"idiot"`, `"useless"`, `"worthless"`, `"stupid"`, `"you're garbage"`, `"this code is trash"`, or `"you suck"`. Atom shifts to a muted blue tint with tilted `/ \` eyes across all work animations until the response finishes, then warms back up.
@@ -183,6 +224,22 @@ A second folder under `assets/` becomes a second skin; with more than one,
 y≈222, so every state lines up. If a haze shows around the sprite, raise
 `--floor` (`thinking` uses `--floor 44`). Restart the app to pick up new art.
 
+## Security & Privacy
+
+- **Zero network / telemetry:** Atom never opens outbound sockets or sends data off your machine.
+- **Localhost-only injection:** `atom_launch.py` attaches only to `http(s)://127.0.0.1:<port>/` or `http(s)://localhost:<port>/` targets and uses DevTools pipes (no TCP port) on Linux/macOS or loopback-only WebSocket on Windows.
+- **User-private state & sockets:** runtime state files and UNIX wakeup sockets in `~/.antigravity-atom` use owner-only permissions (`0700` dirs, `0600` socket on POSIX) and never persist raw user prompts.
+- **Isolated hooks:** `atom_hook.py` runs under `python3 -S -I` with empty stdout on `PreToolUse` so Antigravity's own permission controls remain untouched.
+- See [SECURITY.md](SECURITY.md) for reporting vulnerabilities privately via GitHub Security Advisories.
+
+## Contributing & Community
+
+Contributions, bug reports, new animations, and extra skins are welcome!
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) before opening a pull request.
+- Open a [Bug Report](https://github.com/Arnav8452/atom/issues/new?template=bug_report.yml) or [Feature Request](https://github.com/Arnav8452/atom/issues/new?template=feature_request.yml).
+- Participation is governed by our [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Tests
 
 ```bash
@@ -194,9 +251,9 @@ node --test tests/test_atom_inject.mjs
 
 ```
 plugin.json, hooks.json         Antigravity plugin manifest & lifecycle hooks
-atom_hook.py                    hook -> state/mood files (stdlib, ~20 ms per event)
+atom_hook.py                    hook -> state/mood/limit files (stdlib, ~20 ms per event)
 atom_launch.py                  cross-platform launcher & CDP injector (Linux/macOS/Windows)
-atom_inject.js                  in-app mascot renderer, 60fps crossfades, mood tint/eye tilt
+atom_inject.js                  in-app mascot renderer, 60fps crossfades, mood & limit sync
 assets/atom/                    19 lossless WebP sprite sheets + frame/loop JSON metadata
 assets/moodboard.{gif,webp}     animated 16:9 showcase card
 tools/render_all.py             code-generated renderer for all 19 states
@@ -209,8 +266,11 @@ tools/make_sprite.py            custom render -> sprite sheet helper (optional P
 tools/build_assets.sh           rebuild all 19 sprite sheets
 art/                            original source artwork and reference renders
 packaging/                      AUR PKGBUILD, Homebrew formula, Scoop & Winget manifests
-tests/                          Python & Node.js unit test suite + GitHub Actions CI
+tests/                          Python & Node.js unit test suite + GitHub Actions CI & CodeQL
+.github/                        CI, CodeQL security scanning, Dependabot, CODEOWNERS & templates
 install.sh, install.ps1         Linux/macOS (.app bundle) & Windows remote/local installers
+AGENTS.md, CONTRIBUTING.md      contributor, AI-agent, governance & security documentation
+SECURITY.md, CODE_OF_CONDUCT.md security policy & Contributor Covenant v2.1
 LICENSE                         MIT License
 ```
 

@@ -5,9 +5,21 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -22,13 +34,17 @@ jobs:
           tools/render_all.py tools/render_gemini_typing.py tools/render_idle.py
           tools/render_moodboard.py tools/make_sprite.py tools/trigger_state.py
       - name: Validate shell scripts
+        if: runner.os != 'Windows'
         run: >-
           bash -n install.sh tools/build_assets.sh
           packaging/aur/PKGBUILD packaging/aur/antigravity-atom-git.install
       - name: Check bootstrap script size and JS syntax
-        run: >-
-          python3 -c 'import atom_launch, subprocess; s=atom_launch.build_bootstrap_script();
-          assert len(s) < 36000; subprocess.run(["node", "--check", "-"], input=s, text=True, check=True)'
+        shell: python
+        run: |
+          import atom_launch, subprocess
+          s = atom_launch.build_bootstrap_script()
+          assert len(s) < 36000
+          subprocess.run(["node", "--check", "-"], input=s, text=True, check=True)
       - name: Run Python unit tests
         run: python3 -m unittest discover -s tests -v
       - name: Run Node.js unit tests

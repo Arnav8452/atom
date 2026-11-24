@@ -1,0 +1,31 @@
+name: Feature Request
+description: Suggest a new state, animation, mood trigger, installer option, or skin support
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - New mascot state or mood
+        - Animation / sprite polish
+        - Installer / OS packaging
+        - Performance / UI behavior
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Motivation / Use Case
+      description: What situation in Antigravity would this improve?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Design
+      description: Describe how Atom should look, trigger, or behave.
+    validations:
+      required: true
