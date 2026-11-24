@@ -334,6 +334,70 @@ class HookLifecycleTests(unittest.TestCase):
         conv = json.loads((Path(self.tmp.name) / "convs" / "sub1.json").read_text())
         self.assertEqual(conv["state"], "working")
 
+    def test_quota_limits_and_model_switch(self) -> None:
+        lim_path = Path(self.tmp.name) / "limits.json"
+        emo_path = Path(self.tmp.name) / "emotion.json"
+
+        # 5-hour quota limit on Stop -> records model in limits.json without writing emotion="error"
+        self._run_main({
+            "hookEventName": "Stop",
+            "conversationId": "c-lim",
+            "modelName": "gemini-3-pro",
+            "terminationReason": "ERROR",
+            "error": "You have reached the quota limit for Gemini 3 Pro (5-hour quota).",
+        })
+        self.assertFalse(emo_path.exists())
+        lim = json.loads(lim_path.read_text())
+        self.assertEqual(lim["activeKey"], "gemini-3-pro")
+        self.assertIn("gemini-3-pro", lim["models"])
+        pro_entry = lim["models"]["gemini-3-pro"]
+        self.assertTrue(pro_entry["limited"])
+        self.assertAlmostEqual(pro_entry["until"] - pro_entry["ts"], atom_hook.LIMIT_TTL_SEC, delta=5.0)
+
+        # Weekly limit on another model records ~7 day TTL independently
+        self._run_main({
+            "hookEventName": "Stop",
+            "conversationId": "c-lim",
+            "modelName": "claude-sonnet-4.5",
+            "terminationReason": "ERROR",
+            "error": "Weekly quota exhausted for Claude Sonnet 4.5. Refreshes in 6 days.",
+        })
+        lim = json.loads(lim_path.read_text())
+        self.assertIn("gemini-3-pro", lim["models"])
+        self.assertIn("claude-sonnet-4-5", lim["models"])
+        claude_entry = lim["models"]["claude-sonnet-4-5"]
+        self.assertAlmostEqual(claude_entry["until"] - claude_entry["ts"], atom_hook.WEEKLY_LIMIT_TTL_SEC, delta=5.0)
+
+        # Switching to an available model updates activeModel without erasing existing limits
+        self._run_main({
+            "hookEventName": "SessionStart",
+            "conversationId": "c-lim",
+            "modelName": "gemini-3-flash",
+        })
+        lim = json.loads(lim_path.read_text())
+        self.assertEqual(lim["activeModel"], "gemini-3-flash")
+        self.assertIn("gemini-3-pro", lim["models"])
+        self.assertIn("claude-sonnet-4-5", lim["models"])
+
+        # Successful turn on claude-sonnet-4.5 clears its limit while leaving gemini-3-pro intact
+        self._run_main({
+            "hookEventName": "PreInvocation",
+            "conversationId": "c-lim",
+            "modelName": "claude-sonnet-4.5",
+            "invocationNum": 0,
+            "lastUserInput": "hi",
+        })
+        self.assertIn("claude-sonnet-4-5", json.loads(lim_path.read_text())["models"])
+        self._run_main({
+            "hookEventName": "Stop",
+            "conversationId": "c-lim",
+            "modelName": "claude-sonnet-4.5",
+            "terminationReason": "NO_TOOL_CALL",
+        })
+        lim = json.loads(lim_path.read_text())
+        self.assertNotIn("claude-sonnet-4-5", lim["models"])
+        self.assertIn("gemini-3-pro", lim["models"])
+
 
 if __name__ == "__main__":
     unittest.main()

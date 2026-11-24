@@ -42,7 +42,7 @@ atom_launch.py ──starts──▶ Antigravity app                ▼
   via `notify.sock` (Linux/macOS) or loopback UDP `notify.port` (Windows).
 - **In-app rendering:** `atom_launch.py` launches Antigravity with
   `--remote-debugging-pipe` on Linux/macOS (or loopback `--remote-debugging-port`
-  over a stdlib WebSocket client on Windows), injects the lightweight (<30 KB)
+  over a stdlib WebSocket client on Windows), injects the lightweight (<35 KB)
   `atom_inject.js` bootstrap, and streams per-state sprites lazily via
   `__loadState` only into pages that mount `[data-testid="agent-input-box"]`.
 
@@ -115,7 +115,7 @@ arguments to the existing single instance.)
 | `asking`     | Base       | `PreToolUse` for `ask_question`                                 | speech bubble with pulsing `?` glyph               |
 | `listening`  | Client     | User actively typing in the prompt box (while `idle`/`closed`)  | downward attentive gaze toward the prompt bar      |
 | `watching`   | Base       | `Stop` with `fullyIdle: false` (background tasks still active)  | sweeping eyes + pulsing radar ping                 |
-| `closed`     | Base       | No activity for 5 min                                           | sleepy dim blue body + closed eyes + rising `Zzz`  |
+| `closed`     | Base       | No activity for 5 min, or active model reached its 5-hour / weekly quota limit (wakes immediately on switching to an available model) | sleepy dim blue body + closed eyes + rising `Zzz`  |
 | `dance`      | Reaction   | Click Atom's body                                               | bouncy side-to-side groove, blinks & music notes   |
 | `done`       | Reaction   | `Stop` (`NO_TOOL_CALL`) completing a busy turn                  | victory hop + `^ ^` eyes + pixel confetti          |
 | `happy`      | Reaction   | Praise ("thanks", "perfect!", "nice work")                      | bright cyan glow + bouncy hop + rising hearts      |
@@ -140,6 +140,8 @@ python3 tools/trigger_state.py typing --mood angry    # live angry-tinted + tilt
 python3 tools/trigger_state.py thinking --mood sad    # live sad-tinted + tilted-eye thinking
 python3 tools/trigger_state.py --tour --mood angry    # cycle work states in angry mood
 python3 tools/trigger_state.py --tour-all             # cycle normal, angry work, and sad work states
+python3 tools/trigger_state.py --limit gemini-3-pro   # simulate 5h/weekly quota sleep
+python3 tools/trigger_state.py --clear-limit gemini-3-pro
 ```
 
 - **Smooth transitions & dwell time.** Switches finish the current frame cleanly

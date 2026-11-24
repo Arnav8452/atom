@@ -68,6 +68,7 @@ SHORT_STALE_STATES = {"typing", "exploring", "asking"}
 CORE_STATES = ("idle", "listening")
 PRELOAD_ORDER = (
     "thinking",
+    "closed",
     "dance",
     "typing",
     "working",
@@ -83,7 +84,6 @@ PRELOAD_ORDER = (
     "error",
     "canceled",
     "tired",
-    "closed",
 )
 
 POLL_SEC = 0.5
@@ -163,20 +163,29 @@ class StateReader:
         self._convs_cache: dict[Path, tuple[tuple[int, int], float, str, str | None]] = {}
         self._emotion_sig: tuple[int, int] | None = None
         self._emotion_data: dict = {}
+        self._limits_sig: tuple[int, int] | None = None
+        self._limits_data: dict = {}
 
-    def _read_emotion(self, now: float, force: bool = False) -> dict:
-        epath = self.home / "emotion.json"
+    def _read_cached_json(
+        self, path: Path, sig_attr: str, data_attr: str, now: float, force: bool = False
+    ) -> dict:
         try:
-            st = epath.stat()
+            st = path.stat()
         except OSError:
-            self._emotion_sig = None
-            self._emotion_data = {}
+            setattr(self, sig_attr, None)
+            setattr(self, data_attr, {})
             return {}
         sig = (st.st_mtime_ns, st.st_size)
-        if force or sig != self._emotion_sig or abs(now - st.st_mtime_ns / 1e9) < MTIME_GUARD_SEC:
-            self._emotion_data = read_json(epath)
-            self._emotion_sig = sig
-        return self._emotion_data
+        if force or sig != getattr(self, sig_attr) or abs(now - st.st_mtime_ns / 1e9) < MTIME_GUARD_SEC:
+            setattr(self, data_attr, read_json(path))
+            setattr(self, sig_attr, sig)
+        return getattr(self, data_attr)
+
+    def _read_emotion(self, now: float, force: bool = False) -> dict:
+        return self._read_cached_json(self.home / "emotion.json", "_emotion_sig", "_emotion_data", now, force=force)
+
+    def _read_limits(self, now: float, force: bool = False) -> dict:
+        return self._read_cached_json(self.home / "limits.json", "_limits_sig", "_limits_data", now, force=force)
 
     def _scan_convs(
         self, now: float, force: bool = False
@@ -288,6 +297,35 @@ class StateReader:
         now = time.time()
         emotion_data = self._read_emotion(now, force=force)
         return self._compute_reaction(now, emotion_data)
+
+    def limit_info(self, force: bool = False) -> dict:
+        """Per-model 5h/weekly quota limit status filtered to unexpired entries."""
+        now = time.time()
+        data = self._read_limits(now, force=force)
+        raw_models = data.get("models")
+        limited_models: list[str] = []
+        active_model = str(data.get("activeModel") or "")
+        active_key = str(data.get("activeKey") or "")
+        active_limited = False
+        if isinstance(raw_models, dict):
+            for key, entry in raw_models.items():
+                if not isinstance(entry, dict) or not entry.get("limited"):
+                    continue
+                try:
+                    until = float(entry.get("until", 0))
+                except (TypeError, ValueError):
+                    until = 0.0
+                if until > now:
+                    name = str(entry.get("name") or key)
+                    limited_models.append(name)
+                    if key == active_key or (active_model and name.lower() == active_model.lower()):
+                        active_limited = True
+        limited_models.sort()
+        return {
+            "activeModel": active_model,
+            "activeLimited": active_limited,
+            "limitedModels": limited_models,
+        }
 
     def snapshot(self, force: bool = False) -> tuple[str, str | None, tuple[str, float] | None]:
         """Read emotion.json at most once and return (base_state, mood, reaction)."""
@@ -656,6 +694,7 @@ class Atom:
         self.sent_base: str | None = None
         self.sent_mood: str | None = None
         self.sent_reaction: float | None = None
+        self.sent_limit: tuple[bool, str, tuple[str, ...]] = (False, "", ())
         self.last_preload = 0.0
 
     def get_skin_payload(self, name: str) -> dict:
@@ -745,16 +784,25 @@ class Atom:
                         self.loading_sessions.pop(session, None)
 
                 base, mood, _ = self.state.snapshot()
+                lim = self.state.limit_info()
                 initial = list(CORE_STATES)
                 if base not in initial:
                     initial.append(base)
+                if lim["activeLimited"] and "closed" not in initial:
+                    initial.append("closed")
                 for idx, st in enumerate(initial):
                     self.ensure_state(session, val, st, then=on_loaded if idx == 0 else None)
+                lim_expr = (
+                    f",__atom.setLimit({json.dumps(lim)})"
+                    if (lim["activeLimited"] or lim["limitedModels"] or lim["activeModel"])
+                    else ""
+                )
                 self.cdp.send(
                     "Runtime.evaluate",
-                    {"expression": f"window.__atom&&(__atom.setBase({json.dumps(base)}),__atom.setMood({json.dumps(mood)}))"},
+                    {"expression": f"window.__atom&&(__atom.setBase({json.dumps(base)}),__atom.setMood({json.dumps(mood)}){lim_expr})"},
                     session,
                 )
+                self.sent_limit = (bool(lim["activeLimited"]), lim["activeModel"], tuple(lim["limitedModels"]))
                 self.ready_sessions.add(session)
                 self.last_resync[session] = now_mono
             elif session in self.ready_sessions:
@@ -839,6 +887,15 @@ class Atom:
         if mood != self.sent_mood:
             self.eval_all(f"window.__atom&&__atom.setMood({json.dumps(mood)})")
             self.sent_mood = mood
+            changed = True
+        lim = self.state.limit_info(force=force)
+        lim_key = (bool(lim["activeLimited"]), lim["activeModel"], tuple(lim["limitedModels"]))
+        if lim_key != self.sent_limit:
+            self.eval_all(
+                f"window.__atom&&__atom.setLimit({json.dumps(lim)})",
+                ensure="closed" if lim["activeLimited"] else None,
+            )
+            self.sent_limit = lim_key
             changed = True
         if reaction and reaction[1] != self.sent_reaction:
             self.eval_all(

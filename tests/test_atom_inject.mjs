@@ -28,12 +28,14 @@ function makeHarness({
   const createdBitmaps = [];
   const offscreenCount = { count: 0 };
   let occludedModal = null;
+  const alertNodes = [];
   let barRect = { left: 100, right: 1000, top: 600, bottom: 680, width: 900, height: 80 };
 
   class MockElement {
     constructor(tag) {
       this.tagName = tag.toUpperCase();
       this.id = "";
+      this.className = "";
       this.style = { display: "", transform: "" };
       this.children = [];
       this.parentElement = null;
@@ -44,7 +46,13 @@ function makeHarness({
       this.listeners = new Map();
       this.isConnected = false;
       this._attrs = new Map();
+      this._text = "";
     }
+    get textContent() {
+      if (this._text) return this._text;
+      return this.children.map((c) => c.textContent).join(" ").trim();
+    }
+    set textContent(v) { this._text = String(v ?? ""); }
     setAttribute(k, v) { this._attrs.set(k, String(v)); }
     getAttribute(k) { return this._attrs.get(k) ?? null; }
     appendChild(child) {
@@ -141,7 +149,11 @@ function makeHarness({
       if (sel.includes('role="dialog"')) return occludedModal;
       return null;
     },
-    querySelectorAll: (sel) => (sel === '[data-testid="agent-input-box"]' ? boxes : []),
+    querySelectorAll: (sel) => {
+      if (sel === '[data-testid="agent-input-box"]') return boxes;
+      if (sel.includes("alert") || sel.includes("quota") || sel.includes("limit")) return alertNodes;
+      return [];
+    },
     addEventListener: (type, fn) => {
       if (!listeners.has(type)) listeners.set(type, new Set());
       listeners.get(type).add(fn);
@@ -313,6 +325,11 @@ function makeHarness({
     triggerDomContentLoaded: () => {
       for (const fn of [...(listeners.get("DOMContentLoaded") || [])]) fn();
     },
+    triggerClick: () => {
+      for (const fn of [...(listeners.get("click") || [])]) fn({});
+    },
+    alertNodes,
+    createEl: (tag) => new MockElement(tag),
     triggerInput: (target = boxes[0]?._editor) => {
       for (const fn of [...(listeners.get("input") || [])]) fn({ target });
     },
@@ -1016,4 +1033,114 @@ test("crossfade blend schedules rAF directly at 60fps and long loops exit mid-lo
   // Outro plays its 3 frames cleanly and transitions into thinking
   await h.advance(400);
   assert.equal(h.window.__atom.state.playing, "thinking");
+});
+
+test("setLimit puts Atom into closed sleep and suppresses listening and dance", async () => {
+  const h = makeHarness();
+  const sheetSpec = {
+    webp: Buffer.from("webp").toString("base64"),
+    w: 200,
+    h: 160,
+    cols: 4,
+    durations: [100, 100, 100, 100],
+    loop: [0, 3],
+  };
+  await h.window.__atom.__loadSkin("atom", {
+    ...fakeSkinPayload(),
+    closed: { ...sheetSpec },
+    listening: { ...sheetSpec },
+    dance: { ...sheetSpec },
+  });
+  await h.advance(20);
+  assert.equal(h.window.__atom.state.playing, "idle");
+
+  h.window.__atom.setLimit({ activeModel: "gemini-3-pro", activeLimited: true, limitedModels: ["gemini-3-pro"] });
+  await h.advance(250);
+  assert.equal(h.window.__atom.state.limitSleep, true);
+  assert.equal(h.window.__atom.state.playing, "closed");
+
+  // Typing or clicking does not wakeAtom from limit sleep
+  h.triggerInput();
+  h.triggerHitClick();
+  h.window.__atom.react("dance");
+  await h.advance(150);
+  assert.equal(h.window.__atom.state.playing, "closed");
+  assert.equal(h.window.__atom.state.listening, false);
+});
+
+test("switching prompt-box model selector wakes Atom from limit sleep and returning re-sleeps", async () => {
+  const h = makeHarness();
+  const modelBtn = h.createEl("button");
+  modelBtn.setAttribute("data-testid", "model-selector");
+  modelBtn.textContent = "Gemini 3 Pro (High)";
+  h.boxes[0]._bar.appendChild(modelBtn);
+
+  // Simulate lingering UI banner mentioning the exhausted model
+  const banner = h.createEl("div");
+  banner.setAttribute("role", "alert");
+  banner.textContent = "You have reached the quota limit for Gemini 3 Pro. You can resume using this model at 6:00 PM.";
+  h.alertNodes.push(banner);
+
+  await h.window.__atom.__loadSkin("atom", {
+    ...fakeSkinPayload(),
+    closed: { webp: Buffer.from("webp").toString("base64"), w: 200, h: 160, cols: 4, durations: [100, 100, 100, 100], loop: [0, 3] },
+  });
+  await h.advance(20);
+
+  h.window.__atom.setLimit({ activeModel: "gemini-3-pro", activeLimited: true, limitedModels: ["gemini-3-pro"] });
+  await h.advance(250);
+  assert.equal(h.window.__atom.state.uiModel, "Gemini 3 Pro (High)");
+  assert.equal(h.window.__atom.state.limitSleep, true);
+  assert.equal(h.window.__atom.state.playing, "closed");
+
+  // Switching to an available model wakes Atom immediately even if Pro banner remains visible
+  modelBtn.textContent = "Gemini 3 Flash";
+  h.triggerClick();
+  await h.advance(300);
+  assert.equal(h.window.__atom.state.uiModel, "Gemini 3 Flash");
+  assert.equal(h.window.__atom.state.limitSleep, false);
+  assert.equal(h.window.__atom.state.playing, "idle");
+
+  // Switching back to the exhausted model immediately puts Atom back to sleep
+  modelBtn.textContent = "Gemini 3 Pro (High)";
+  h.triggerClick();
+  await h.advance(300);
+  assert.equal(h.window.__atom.state.limitSleep, true);
+  assert.equal(h.window.__atom.state.playing, "closed");
+});
+
+test("DOM quota alert sleeps Atom while chat transcript text does not false-trigger", async () => {
+  const h = makeHarness();
+  const chatFeed = h.createEl("div");
+  chatFeed.setAttribute("data-testid", "chat-messages");
+  chatFeed.textContent = "We hit the 5-hour limit and weekly quota earlier in this project.";
+  h.pane.appendChild(chatFeed);
+
+  const inTranscriptStatus = h.createEl("span");
+  inTranscriptStatus.setAttribute("role", "status");
+  inTranscriptStatus.textContent = "Rate limit reached";
+  const convWrap = h.createEl("div");
+  convWrap.className = "conversation-turn";
+  convWrap.appendChild(inTranscriptStatus);
+  h.alertNodes.push(inTranscriptStatus);
+
+  await h.window.__atom.__loadSkin("atom", {
+    ...fakeSkinPayload(),
+    closed: { webp: Buffer.from("webp").toString("base64"), w: 200, h: 160, cols: 4, durations: [100, 100, 100, 100], loop: [0, 3] },
+  });
+  await h.advance(20);
+  h.window.__atom.checkLimit();
+  await h.advance(200);
+  assert.equal(h.window.__atom.state.limitSleep, false);
+  assert.equal(h.window.__atom.state.playing, "idle");
+
+  // A genuine outside-transcript quota alert puts Atom to sleep
+  const quotaAlert = h.createEl("div");
+  quotaAlert.setAttribute("role", "alert");
+  quotaAlert.textContent = "Weekly limit reached · 0% remaining";
+  h.alertNodes.push(quotaAlert);
+  h.window.__atom.checkLimit();
+  await h.advance(300);
+  assert.equal(h.window.__atom.state.limitSleep, true);
+  assert.equal(h.window.__atom.state.playing, "closed");
 });

@@ -188,6 +188,34 @@ class StateReaderTests(unittest.TestCase):
             self.assertIsNone(mood2)
             self.assertIsNone(react2)
 
+    def test_limit_info_tracks_and_expires_models(self) -> None:
+        now = time.time()
+        sr = atom_launch.StateReader(self.home)
+        (self.home / "limits.json").write_text(json.dumps({
+            "activeModel": "gemini-3-pro",
+            "activeKey": "gemini-3-pro",
+            "models": {
+                "gemini-3-pro": {"name": "gemini-3-pro", "limited": True, "ts": now, "until": now + 3600},
+                "old-model": {"name": "old-model", "limited": True, "ts": now - 999, "until": now - 10},
+            },
+        }))
+        lim = sr.limit_info(force=True)
+        self.assertEqual(lim["activeModel"], "gemini-3-pro")
+        self.assertTrue(lim["activeLimited"])
+        self.assertEqual(lim["limitedModels"], ["gemini-3-pro"])
+
+        (self.home / "limits.json").write_text(json.dumps({
+            "activeModel": "gemini-3-flash",
+            "activeKey": "gemini-3-flash",
+            "models": {
+                "gemini-3-pro": {"name": "gemini-3-pro", "limited": True, "ts": now, "until": now + 3600},
+            },
+        }))
+        lim2 = sr.limit_info(force=True)
+        self.assertEqual(lim2["activeModel"], "gemini-3-flash")
+        self.assertFalse(lim2["activeLimited"])
+        self.assertEqual(lim2["limitedModels"], ["gemini-3-pro"])
+
 
 class FakeCdp:
     def __init__(self) -> None:
@@ -216,7 +244,7 @@ class AtomBridgeTests(unittest.TestCase):
         sr = atom_launch.StateReader(self.home)
         atom = atom_launch.Atom(cdp, state=sr)
 
-        self.assertLess(len(atom.script), 30_000)
+        self.assertLess(len(atom.script), 36_000)
         self.assertNotIn("data:image/webp", atom.script)
         self.assertNotIn("UklGR", atom.script)
 
@@ -345,6 +373,40 @@ class AtomBridgeTests(unittest.TestCase):
         self.assertEqual(atom.ready_sessions, set())
         self.assertEqual(atom.probing_sessions, set())
 
+    def test_limit_sync_loads_closed_and_clears_on_model_switch(self) -> None:
+        cdp = FakeCdp()
+        sr = atom_launch.StateReader(self.home)
+        atom = atom_launch.Atom(cdp, state=sr)
+        atom.sessions["t1"] = "s1"
+        atom.session_skin["s1"] = "atom"
+        atom.loaded_states["s1"] = {"idle", "listening"}
+        atom.ready_sessions.add("s1")
+
+        now = time.time()
+        (self.home / "limits.json").write_text(json.dumps({
+            "activeModel": "gemini-3-pro",
+            "activeKey": "gemini-3-pro",
+            "models": {
+                "gemini-3-pro": {"name": "gemini-3-pro", "limited": True, "ts": now, "until": now + 3600},
+            },
+        }))
+        atom.poll(force=True)
+        evals = [p["expression"] for m, p, sess, _ in cdp.sent if m == "Runtime.evaluate" and sess == "s1"]
+        self.assertTrue(any('__loadState("atom","closed",' in e for e in evals))
+        self.assertTrue(any('__atom.setLimit(' in e and '"activeLimited": true' in e for e in evals))
+
+        cdp.sent.clear()
+        (self.home / "limits.json").write_text(json.dumps({
+            "activeModel": "gemini-3-flash",
+            "activeKey": "gemini-3-flash",
+            "models": {
+                "gemini-3-pro": {"name": "gemini-3-pro", "limited": True, "ts": now, "until": now + 3600},
+            },
+        }))
+        atom.poll(force=True)
+        evals2 = [p["expression"] for m, p, sess, _ in cdp.sent if m == "Runtime.evaluate" and sess == "s1"]
+        self.assertTrue(any('__atom.setLimit(' in e and '"activeLimited": false' in e for e in evals2))
+
     def test_generated_assets_have_valid_loop_metadata(self) -> None:
         assets = ROOT / "assets" / "atom"
         self.assertEqual(len(atom_launch.STATES), 19)
@@ -456,6 +518,21 @@ class PreviewToolsTests(unittest.TestCase):
                 self.assertEqual(first.resolve(), atom_launch.ROOT.resolve())
             second = atom_launch.ensure_hooks_installed(plugins_dir=plugins_dir)
             self.assertEqual(second, first)
+
+    def test_trigger_state_limit_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            orig_home = atom_hook.HOME
+            atom_hook.HOME = tmp
+            try:
+                with mock.patch.object(atom_hook, "notify_launcher"):
+                    trigger_state.set_limit("gemini-3-pro", True)
+                    lim = json.loads((Path(tmp) / "limits.json").read_text())
+                    self.assertIn("gemini-3-pro", lim["models"])
+                    trigger_state.set_limit("gemini-3-pro", False)
+                    lim2 = json.loads((Path(tmp) / "limits.json").read_text())
+                    self.assertNotIn("gemini-3-pro", lim2["models"])
+            finally:
+                atom_hook.HOME = orig_home
 
 
 if __name__ == "__main__":

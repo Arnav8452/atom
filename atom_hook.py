@@ -44,6 +44,23 @@ EVENT_STATE = {
 }
 
 BUSY_STATES = frozenset({"thinking", "typing", "working", "exploring", "running", "delegating", "asking"})
+LIMIT_TTL_SEC = 5 * 3600
+WEEKLY_LIMIT_TTL_SEC = 7 * 24 * 3600
+QUOTA_ERROR_RE = re.compile(
+    r"(?:"
+    r"you\s+have\s+reached\s+the\s+quota\s+limit|"
+    r"quota\b.*\b(?:exhaust\w*|exceed\w*|reach\w*|limit\w*)|"
+    r"(?:exhaust\w*|exceed\w*|reach\w*)\s+(?:\w+\s+){0,4}quota|"
+    r"rate\s*limit(?:ed)?|usage\s+limit|"
+    r"plan(?:'s)?\s+(?:baseline\s+)?quota|"
+    r"(?:5[-\s]?hour|weekly)\s+(?:quota|limit)|"
+    r"resume\s+using\s+this\s+model\s+at|"
+    r"too\s+many\s+requests|resource[_\s-]?exhausted|\b429\b"
+    r")",
+    re.IGNORECASE,
+)
+QUOTA_TERM_RE = re.compile(r"QUOTA|RATE_LIMIT|RESOURCE_EXHAUSTED|USAGE_LIMIT", re.IGNORECASE)
+WEEKLY_LIMIT_RE = re.compile(r"week(?:ly)?|baseline\s+quota|next\s+week|\b\d+\s+days?\b", re.IGNORECASE)
 
 # Tool classification for PreToolUse.
 EDIT_TOOL_RE = re.compile(
@@ -126,6 +143,73 @@ def _is_shouting(text: str) -> bool:
         return False
     letters = [c for tok in alpha_words for c in tok if c.isalpha()]
     return len(letters) >= 12 and sum(c.isupper() for c in letters) / len(letters) > 0.8
+
+
+def normalize_model_name(name: str) -> str:
+    s = str(name or "").strip().lower()
+    if "/" in s:
+        s = s.rsplit("/", 1)[-1]
+    return re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+
+
+def is_quota_error(term: str, error: object) -> bool:
+    if QUOTA_TERM_RE.search(str(term or "")):
+        return True
+    err_text = str(error or "")
+    return bool(err_text and QUOTA_ERROR_RE.search(err_text))
+
+
+def update_model_limits(
+    home: str,
+    model: str,
+    limited: bool | None,
+    now: float,
+    ttl: float = LIMIT_TTL_SEC,
+) -> dict:
+    limits_path = os.path.join(home, "limits.json")
+    raw: dict = {}
+    if os.path.isfile(limits_path):
+        try:
+            with open(limits_path, "r", encoding="utf-8") as fh:
+                loaded = json.load(fh)
+            if isinstance(loaded, dict):
+                raw = loaded
+        except (OSError, ValueError):
+            raw = {}
+    models_in = raw.get("models")
+    models: dict[str, dict] = {}
+    if isinstance(models_in, dict):
+        for k, v in models_in.items():
+            if not isinstance(v, dict) or not v.get("limited"):
+                continue
+            try:
+                until = float(v.get("until", 0))
+            except (TypeError, ValueError):
+                until = 0.0
+            if until > now:
+                models[k] = v
+
+    clean_model = str(model or "").strip()
+    key = normalize_model_name(clean_model)
+    if key:
+        if limited is True:
+            models[key] = {
+                "name": clean_model,
+                "limited": True,
+                "ts": now,
+                "until": now + ttl,
+            }
+        elif limited is False:
+            models.pop(key, None)
+
+    data: dict[str, object] = {
+        "models": models,
+        "activeModel": clean_model or str(raw.get("activeModel") or ""),
+        "activeKey": key or str(raw.get("activeKey") or ""),
+        "ts": now,
+    }
+    write_json(limits_path, data)
+    return data
 
 
 def detect_emotion(text: str) -> str | None:
@@ -265,18 +349,38 @@ def handle(payload: dict) -> None:
         conv_data["mood"] = mood
     write_json(conv_path, conv_data)
 
-    if event == "PostToolUse" and payload.get("error"):
-        write_json(emotion_path, {"emotion": "error", "ts": now})
-    elif event == "Stop":
-        term = str(payload.get("terminationReason") or "")
-        if term == "ERROR" or payload.get("error"):
+    model = str(payload.get("modelName") or "").strip()
+    term = str(payload.get("terminationReason") or "")
+    err = payload.get("error")
+    err_text = str(err or "")
+
+    if event == "Stop":
+        if is_quota_error(term, err):
+            ttl = WEEKLY_LIMIT_TTL_SEC if WEEKLY_LIMIT_RE.search(err_text) else LIMIT_TTL_SEC
+            update_model_limits(HOME, model or "default", True, now, ttl=ttl)
+        else:
+            if model and not err and term != "ERROR":
+                update_model_limits(HOME, model, False, now)
+            if term == "ERROR" or err:
+                write_json(emotion_path, {"emotion": "error", "ts": now})
+            elif term == "USER_CANCELED":
+                write_json(emotion_path, {"emotion": "canceled", "ts": now})
+            elif term in ("MAX_INVOCATIONS", "MAX_FORCED_INVOCATIONS", "MAX_TOKEN_BUDGET_EXCEEDED"):
+                write_json(emotion_path, {"emotion": "tired", "ts": now})
+            elif term == "NO_TOOL_CALL" and prev_state in BUSY_STATES and prev_mood not in ("angry", "sad"):
+                write_json(emotion_path, {"emotion": "done", "ts": now})
+    elif event == "PostToolUse" and err:
+        if is_quota_error("", err):
+            ttl = WEEKLY_LIMIT_TTL_SEC if WEEKLY_LIMIT_RE.search(err_text) else LIMIT_TTL_SEC
+            update_model_limits(HOME, model or "default", True, now, ttl=ttl)
+        else:
             write_json(emotion_path, {"emotion": "error", "ts": now})
-        elif term == "USER_CANCELED":
-            write_json(emotion_path, {"emotion": "canceled", "ts": now})
-        elif term in ("MAX_INVOCATIONS", "MAX_FORCED_INVOCATIONS", "MAX_TOKEN_BUDGET_EXCEEDED"):
-            write_json(emotion_path, {"emotion": "tired", "ts": now})
-        elif term == "NO_TOOL_CALL" and prev_state in BUSY_STATES and prev_mood not in ("angry", "sad"):
-            write_json(emotion_path, {"emotion": "done", "ts": now})
+    elif event in ("PreToolUse", "PostToolUse", "PostInvocation"):
+        if model:
+            update_model_limits(HOME, model, False, now)
+    elif event in ("SessionStart", "PreInvocation"):
+        if model:
+            update_model_limits(HOME, model, None, now)
 
     notify_launcher()
 

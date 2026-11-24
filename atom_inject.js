@@ -14,6 +14,9 @@
   const FIDGET_AFTER_MS = 7000;
   const LISTEN_MS = 2000;
   const REACTIONS = new Set(["happy", "sad", "angry", "error", "canceled", "tired", "done", "dance"]);
+  const MF_RE = /\b(gemini|claude|gpt|opus|sonnet|haiku|flash)\b/i;
+  const DQ_RE = /(?:reached.*quota|quota\s*(?:limit|exhaust|exceed)|(?:rate|usage|5[-\s]?h(?:ou)?r|weekly)\s*limit|resume using this model|0% remaining)/i;
+  const CHAT_RE = /message|conversation|chat|transcript|history|turn|log/i;
   const MOOD_LOOK = {
     angry: { body: { hue: 6, sat: 1.05, val: 0.98 }, eyes: "angry" },
     sad:   { body: { hue: 214, sat: 0.32, val: 0.78 }, eyes: "sad" },
@@ -329,7 +332,7 @@
       }
       return;
     }
-    if (moodBlocksDance()) return;
+    if (moodBlocksDance() || limitSleep) return;
     if (INSTANT_EXIT.has(playing) && sheet) {
       start("dance", { isOneShot: true });
       paintVisible();
@@ -368,7 +371,96 @@
   let moodFrom = 0;
   let moodTo = 0;
   let moodAt = 0;
+  let hookModel = "";
+  let hookLimited = false;
+  const limitedModels = new Set();
+  let uiModel = "";
+  let domLimited = false;
+  let limitSleep = false;
+  let limitScanTimer = 0;
+  let prevDomBanner = "";
   const moodBlocksDance = () => Boolean(mood || playing === "angry" || playing === "sad");
+
+  const mNorm = (s) => String(s || "").toLowerCase().replace(/^models\//, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const mKey = (s) => mNorm(s).replace(/\b(?:high|low|medium|fast|thinking|preview|experimental|exp|latest|auto)\b/g, "").replace(/\s+/g, " ").trim() || mNorm(s);
+  const mMatch = (a, b) => { const ka = mKey(a); return Boolean(ka && ka === mKey(b)); };
+  const hasLim = (u) => [...limitedModels].some((m) => mMatch(m, u));
+  const hasM = (nq, m) => { const k = mKey(m); return k.includes(" ") && ` ${nq} `.includes(` ${k} `); };
+  const attr = (el, k) => el?.getAttribute?.(k) || "";
+  const txt = (el) => String(el?.textContent || "").trim();
+  const isEd = (el) => Boolean(el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || (attr(el, "contenteditable") && attr(el, "contenteditable") !== "false")));
+  const isChat = (el) => CHAT_RE.test(`${attr(el, "data-testid")} ${attr(el, "role")} ${el?.className || ""}`);
+  function queueBase(target) {
+    if (!sheet) return;
+    if (!reaction) {
+      const [, hi] = loopRange(sheet);
+      if (target === playing && frame <= hi) { oneShot = false; pending = null; } else pending = target;
+    }
+    scheduleExit();
+  }
+  function syncLimitSleep() {
+    const next = Boolean(domLimited || hookLimited);
+    if (next === limitSleep) return;
+    limitSleep = next;
+    if (next) { listening = false; if (listenTimer) { clearTimeout(listenTimer); listenTimer = 0; } }
+    queueBase(effectiveBase());
+  }
+  function scanQuotaDom(apply = true) {
+    if (destroyed || !activated) return;
+    const found = currentBar(), box = found?.box || null;
+    let nextUi = "", fb = "", qt = "";
+    const chkQ = (el) => {
+      if (qt || !el || isEd(el) || isChat(el)) return;
+      const t = txt(el);
+      if (t && t.length <= 400 && DQ_RE.test(t)) qt = t;
+    };
+    if (box) {
+      const q = [box];
+      for (let i = 0; i < q.length && i < 80; i++) {
+        const el = q[i];
+        if (!el || isEd(el)) continue;
+        for (const c of el.children || []) q.push(c);
+        if (el === box) continue;
+        const tid = attr(el, "data-testid"), aria = attr(el, "aria-label"), role = attr(el, "role"), t = txt(el);
+        if (!nextUi && /model/i.test(tid + aria)) {
+          const cl = (t || aria.replace(/^(?:model|select\s+model)\s*[:\-]?\s*/i, "")).trim();
+          if (cl && cl.length <= 64 && !DQ_RE.test(cl)) nextUi = cl;
+        }
+        if (!fb && (/^(?:BUTTON|SELECT)$/.test(el.tagName) || role === "button" || role === "combobox") && t && t.length <= 48 && MF_RE.test(t) && !DQ_RE.test(t)) fb = t;
+        chkQ(el);
+      }
+      nextUi = nextUi || fb;
+      if (!qt) for (const el of box.parentElement?.children || []) if (el !== box) chkQ(el);
+    }
+    if (!qt && document.querySelectorAll) {
+      try {
+        for (const el of document.querySelectorAll('[role="alert"],[role="status"],[data-testid*="quota" i],[data-testid*="limit" i]')) {
+          let bad = false;
+          for (let p = el; p && p !== document.body; p = p.parentElement) if (isChat(p)) { bad = true; break; }
+          if (!bad) chkQ(el);
+          if (qt) break;
+        }
+      } catch {}
+    }
+    const prevUi = uiModel, switched = Boolean(nextUi && prevUi && !mMatch(nextUi, prevUi));
+    if (nextUi) uiModel = nextUi;
+    if (qt) {
+      const nq = mNorm(qt);
+      const rec = [...limitedModels].find((m) => hasM(nq, m)) || (uiModel && hasM(nq, uiModel) ? uiModel : "") || (prevUi && switched && hasM(nq, prevUi) ? prevUi : "") || (!switched && !hookModel ? uiModel : "");
+      if (rec) limitedModels.add(rec);
+      domLimited = uiModel && hasLim(uiModel) ? true : uiModel && [...limitedModels].some((m) => hasM(nq, m) && !mMatch(m, uiModel)) ? false : !(switched && qt === prevDomBanner);
+    } else domLimited = false;
+    prevDomBanner = qt;
+    if (uiModel) {
+      if (hasLim(uiModel)) hookLimited = true;
+      else if (switched || (hookModel && !mMatch(hookModel, uiModel))) hookLimited = false;
+    }
+    if (apply) syncLimitSleep();
+  }
+  function scheduleLimitScan() {
+    if (destroyed || !activated || limitScanTimer) return;
+    limitScanTimer = setTimeout(() => { limitScanTimer = 0; scanQuotaDom(true); }, 120);
+  }
 
   function smooth01(t) {
     return t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
@@ -388,6 +480,7 @@
   }
 
   function effectiveBase() {
+    if (limitSleep && (base === "idle" || base === "closed")) return "closed";
     return listening && (base === "idle" || base === "closed") ? "listening" : base;
   }
 
@@ -396,7 +489,7 @@
     if (!listening) return;
     listening = false;
     if (playing === "listening" && !reaction) {
-      pending = base;
+      pending = effectiveBase();
       scheduleTick();
     }
   }
@@ -414,7 +507,7 @@
     if (!inside) return;
     if (listenTimer) clearTimeout(listenTimer);
     listenTimer = setTimeout(stopListening, LISTEN_MS);
-    if (base !== "idle" && base !== "closed") return;
+    if (limitSleep || (base !== "idle" && base !== "closed")) return;
     if (!listening) {
       listening = true;
       if (!reaction && !REACTIONS.has(playing) && playing !== "listening") {
@@ -736,6 +829,7 @@
     if (destroyed || !activated) return;
     lastPlaceAt = performance.now();
     const found = currentBar();
+    scanQuotaDom(true);
     if (!found || !sheet) {
       hideHost();
       return;
@@ -815,18 +909,7 @@
         listening = false;
         if (listenTimer) { clearTimeout(listenTimer); listenTimer = 0; }
       }
-      const target = effectiveBase();
-      if (!sheet) return;
-      if (!reaction) {
-        const [, hi] = loopRange(sheet);
-        if (target === playing && frame <= hi) {
-          oneShot = false;
-          pending = null;
-        } else {
-          pending = target;
-        }
-      }
-      scheduleExit();
+      queueBase(effectiveBase());
     },
     setMood(nextMood) {
       const next = nextMood === "angry" || nextMood === "sad" ? nextMood : null;
@@ -846,8 +929,26 @@
       }
       paintVisible(now);
     },
+    setLimit(info, modelName) {
+      const obj = typeof info === "object" && info ? info : null;
+      hookModel = String((obj ? obj.activeModel : modelName) || hookModel || "").trim();
+      limitedModels.clear();
+      if (obj && Array.isArray(obj.limitedModels)) for (const m of obj.limitedModels) if (m) limitedModels.add(String(m));
+      else if (info === true && hookModel) limitedModels.add(hookModel);
+      const next = obj ? Boolean(obj.activeLimited) : Boolean(info);
+      if (uiModel && limitedModels.size) {
+        if (hasLim(uiModel)) hookLimited = true;
+        else if (next && hookModel && !mMatch(hookModel, uiModel)) hookLimited = false;
+        else hookLimited = next;
+      } else hookLimited = next;
+      if (typeof document !== "undefined") scanQuotaDom(false);
+      syncLimitSleep();
+    },
+    checkLimit() {
+      scanQuotaDom(true);
+    },
     react(state, id) {
-      if (state === "dance" && moodBlocksDance()) return;
+      if (state === "dance" && (moodBlocksDance() || limitSleep)) return;
       if (id != null) {
         if (id === lastReactId) return;
         lastReactId = id;
@@ -863,11 +964,15 @@
       listening = false;
       mood = null;
       moodColor = null;
+      hookLimited = false;
+      domLimited = false;
+      limitSleep = false;
       cancelTick();
       if (placeTimer) { clearTimeout(placeTimer); placeTimer = 0; }
       if (waitTimer) { clearTimeout(waitTimer); waitTimer = 0; }
       if (listenTimer) { clearTimeout(listenTimer); listenTimer = 0; }
       if (dwellTimer) { clearTimeout(dwellTimer); dwellTimer = 0; }
+      if (limitScanTimer) { clearTimeout(limitScanTimer); limitScanTimer = 0; }
       if (waitObserver) { waitObserver.disconnect(); waitObserver = null; }
       if (domObserver) { domObserver.disconnect(); domObserver = null; }
       if (barResizeObserver) barResizeObserver.disconnect();
@@ -878,6 +983,7 @@
       window.removeEventListener("scroll", schedulePlace, { capture: true });
       window.removeEventListener("transitionend", schedulePlace);
       document.removeEventListener("focusin", place);
+      document.removeEventListener("click", scheduleLimitScan, { capture: true });
       document.removeEventListener("input", onPromptInput, { capture: true });
       document.removeEventListener("keydown", onPromptInput, { capture: true });
       document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -900,6 +1006,8 @@
         base,
         mood,
         listening,
+        limitSleep,
+        uiModel,
         pending,
         reaction,
         widthCss,
@@ -940,15 +1048,18 @@
     domObserver = new MutationObserver(() => {
       mount();
       schedulePlace();
+      scheduleLimitScan();
     });
     domObserver.observe(document.documentElement || document, { childList: true });
     window.addEventListener("resize", place, { passive: true });
     window.addEventListener("scroll", schedulePlace, { capture: true, passive: true });
     window.addEventListener("transitionend", schedulePlace, { passive: true });
     document.addEventListener("focusin", place, { passive: true });
+    document.addEventListener("click", scheduleLimitScan, { capture: true, passive: true });
     document.addEventListener("input", onPromptInput, { capture: true, passive: true });
     document.addEventListener("keydown", onPromptInput, { capture: true, passive: true });
     document.addEventListener("visibilitychange", onVisibilityChange);
+    scanQuotaDom(false);
   }
 
   if (hasPromptBox()) {
