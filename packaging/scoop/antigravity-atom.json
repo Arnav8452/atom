@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "description": "A pixel mascot on Antigravity's prompt bar with 19 animated states and sustained moods",
+  "homepage": "https://github.com/Arnav8452/atom",
+  "license": "MIT",
+  "url": "https://github.com/Arnav8452/atom/archive/refs/heads/main.zip",
+  "extract_dir": "atom-main",
+  "post_install": "powershell -NoProfile -ExecutionPolicy Bypass -File \"$dir\\install.ps1\"",
+  "pre_uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File \"$dir\\install.ps1\" -Uninstall",
+  "checkver": "github",
+  "autoupdate": {
+    "url": "https://github.com/Arnav8452/atom/archive/refs/heads/main.zip"
+  }
+}

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Atom · All States &amp; Moods Gallery</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font: 13px/1.45 system-ui, -apple-system, sans-serif;
+      background: #0d1117; color: #e6edf3;
+    }
+    header {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+      padding: 12px 20px; background: rgba(13, 17, 23, 0.94);
+      border-bottom: 1px solid #30363d; backdrop-filter: blur(8px);
+    }
+    h1 { font-size: 15px; margin: 0 12px 0 0; font-weight: 600; }
+    .btn {
+      padding: 6px 12px; border-radius: 6px; border: 1px solid #30363d;
+      background: #161b22; color: #e6edf3; cursor: pointer; font: inherit;
+    }
+    .btn:hover { border-color: #58a6ff; }
+    .btn.active[data-mood="normal"] { background: #1f6feb; border-color: #58a6ff; }
+    .btn.active[data-mood="angry"]  { background: #b62324; border-color: #f85149; }
+    .btn.active[data-mood="sad"]    { background: #384e68; border-color: #79c0ff; }
+    .meta { margin-left: auto; color: #8b949e; font-size: 12px; }
+    main {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 14px; padding: 18px 20px 36px; max-width: 1400px; margin: 0 auto;
+    }
+    .card {
+      background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+      padding: 10px 12px 12px; display: flex; flex-direction: column; align-items: center;
+    }
+    .card-head {
+      width: 100%; display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 6px;
+    }
+    .name { font-weight: 600; font-size: 14px; }
+    .pill {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 2px 6px; border-radius: 999px; background: #21262d; color: #8b949e;
+    }
+    .pill.mood-on { background: #30363d; color: #e6edf3; }
+    canvas {
+      width: 150px; height: 120px; image-rendering: pixelated;
+      background: radial-gradient(circle at 50% 62%, #1c2430, #0d1117 75%);
+      border-radius: 6px;
+    }
+    .sub { margin-top: 6px; font-size: 11px; color: #8b949e; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Atom · 19 States &amp; Sustained Moods</h1>
+    <button class="btn active" data-mood="normal">Normal</button>
+    <button class="btn" data-mood="angry">Angry Mood (red + \ / eyes)</button>
+    <button class="btn" data-mood="sad">Sad Mood (muted + / \ eyes)</button>
+    <button class="btn" id="toggle-play">Pause</button>
+    <span class="meta" id="status">Loading sprites…</span>
+  </header>
+  <main id="grid"></main>
+  <script>
+    const STATES = [
+      { id: "idle", kind: "Base", moodable: false },
+      { id: "listening", kind: "Client", moodable: false },
+      { id: "watching", kind: "Base", moodable: false },
+      { id: "closed", kind: "Base", moodable: false },
+      { id: "thinking", kind: "Work", moodable: true },
+      { id: "typing", kind: "Work", moodable: true },
+      { id: "working", kind: "Work", moodable: true },
+      { id: "exploring", kind: "Work", moodable: true },
+      { id: "running", kind: "Work", moodable: true },
+      { id: "delegating", kind: "Work", moodable: true },
+      { id: "asking", kind: "Work", moodable: true },
+      { id: "dance", kind: "Reaction", moodable: false },
+      { id: "done", kind: "Reaction", moodable: false },
+      { id: "happy", kind: "Reaction", moodable: false },
+      { id: "angry", kind: "Reaction", moodable: false },
+      { id: "sad", kind: "Reaction", moodable: false },
+      { id: "error", kind: "Reaction", moodable: false },
+      { id: "canceled", kind: "Reaction", moodable: false },
+      { id: "tired", kind: "Reaction", moodable: false },
+    ];
+    const MOOD_LOOK = {
+      angry: { body: { hue: 6, sat: 1.05, val: 0.98 }, eyes: "angry" },
+      sad:   { body: { hue: 214, sat: 0.32, val: 0.78 }, eyes: "sad" },
+    };
+
+    function tiltMoodEyes(d, W, H, fw, fh, mode) {
+      const cols = Math.floor(W / fw), rows = Math.floor(H / fh);
+      const xEnd = Math.min(fw, 104), yEnd = Math.min(fh, 87);
+      for (let r = 0; r < rows; r++) {
+        const fy = r * fh;
+        for (let c = 0; c < cols; c++) {
+          const fx = c * fw;
+          const runs = [];
+          let cur = null;
+          for (let x = 50; x < xEnd; x++) {
+            let lo = 999, hi = -1;
+            for (let y = 58; y < yEnd; y++) {
+              const o = ((fy + y) * W + (fx + x)) * 4;
+              if (d[o + 3] > 200 && d[o] < 35 && d[o + 1] < 35 && d[o + 2] < 35) {
+                if (y < lo) lo = y;
+                if (y > hi) hi = y;
+              }
+            }
+            if (hi >= lo) {
+              if (!cur) cur = { x0: x, x1: x, y0: lo, y1: hi };
+              else { cur.x1 = x; if (lo < cur.y0) cur.y0 = lo; if (hi > cur.y1) cur.y1 = hi; }
+            } else if (cur) { runs.push(cur); cur = null; }
+          }
+          if (cur) runs.push(cur);
+          const eyes = runs.filter((e) => (e.x1 - e.x0 + 1) >= 4 && (e.x1 - e.x0 + 1) <= 10 && (e.y1 - e.y0 + 1) >= 4 && (e.y1 - e.y0 + 1) <= 10);
+          let pair = null;
+          for (let i = 0; i < eyes.length && !pair; i++) {
+            for (let j = i + 1; j < eyes.length; j++) {
+              const dx = (eyes[j].x0 + eyes[j].x1 - eyes[i].x0 - eyes[i].x1) * 0.5;
+              const dy = Math.abs((eyes[j].y0 + eyes[j].y1 - eyes[i].y0 - eyes[i].y1) * 0.5);
+              if (dx >= 22 && dx <= 32 && dy <= 3) { pair = [eyes[i], eyes[j]]; break; }
+            }
+          }
+          if (!pair) continue;
+          const [L, R] = pair;
+          const mo = ((fy + L.y0 + 1) * W + (fx + ((L.x1 + R.x0) >> 1))) * 4;
+          if (d[mo + 3] <= 200) continue;
+          const fr = d[mo], fg = d[mo + 1], fb = d[mo + 2];
+          for (let idx = 0; idx < 2; idx++) {
+            const e = pair[idx], isL = idx === 0, span = Math.max(1, e.x1 - e.x0);
+            for (let x = e.x0; x <= e.x1; x++) {
+              const u = mode === "angry" ? (isL ? (x - e.x0) / span : (e.x1 - x) / span) : (isL ? (e.x1 - x) / span : (x - e.x0) / span);
+              const endY = Math.min(e.y1, e.y0 + Math.round(u * (mode === "angry" ? 3.2 : 3.5)) - 1);
+              for (let y = e.y0; y <= endY; y++) {
+                const o = ((fy + y) * W + (fx + x)) * 4;
+                d[o] = fr; d[o + 1] = fg; d[o + 2] = fb; d[o + 3] = 255;
+              }
+              if (mode === "angry" && u < 0.45 && fy + e.y0 - 1 >= 0) {
+                const bo = ((fy + e.y0 - 1) * W + (fx + x)) * 4;
+                if (d[bo + 3] > 200) { d[bo] = 10; d[bo + 1] = 14; d[bo + 2] = 20; }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    function buildMoodCanvas(img, look, fw, fh) {
+      const cv = document.createElement("canvas");
+      cv.width = img.width; cv.height = img.height;
+      const c = cv.getContext("2d");
+      c.drawImage(img, 0, 0);
+      const id = c.getImageData(0, 0, cv.width, cv.height), d = id.data, body = look.body;
+      for (let i = 0; i < d.length; i += 4) {
+        if (!d[i + 3]) continue;
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        const max = Math.max(r, g, b), min = Math.min(r, g, b), delta = max - min;
+        let h = 0;
+        if (delta) {
+          h = (max === r ? ((g - b) / delta) % 6 : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4) * 60;
+          if (h < 0) h += 360;
+        }
+        let s = max ? delta / max : 0, v = max / 255;
+        if (!(body && h >= 196 && h <= 226 && s > 0.35)) continue;
+        h = body.hue;
+        s = Math.max(0, Math.min(1, s * body.sat));
+        v = Math.max(0, Math.min(1, v * body.val));
+        const ch = v * s, x = ch * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - ch;
+        let rr = 0, gg = 0, bb = 0;
+        if (h < 60) { rr = ch; gg = x; } else if (h < 120) { rr = x; gg = ch; }
+        else if (h < 180) { gg = ch; bb = x; } else if (h < 240) { gg = x; bb = ch; }
+        else if (h < 300) { rr = x; bb = ch; } else { rr = ch; bb = x; }
+        d[i] = (rr + m) * 255; d[i + 1] = (gg + m) * 255; d[i + 2] = (bb + m) * 255;
+      }
+      if (look.eyes) tiltMoodEyes(d, cv.width, cv.height, fw, fh, look.eyes);
+      c.putImageData(id, 0, 0);
+      return cv;
+    }
+
+    let currentMood = "normal";
+    let paused = false;
+    const cards = [];
+    const grid = document.getElementById("grid");
+
+    async function loadAll() {
+      let ready = 0;
+      await Promise.all(STATES.map(async (st) => {
+        const meta = await fetch(`/assets/atom/${st.id}.json`).then((r) => r.json());
+        const img = new Image();
+        img.src = `/assets/atom/${st.id}.webp`;
+        await img.decode();
+
+        const el = document.createElement("div");
+        el.className = "card";
+        const [lo, hi] = meta.loop || [0, meta.durations.length - 1];
+        el.innerHTML = `<div class="card-head"><span class="name">${st.id}</span><span class="pill">${st.kind}</span></div><canvas width="${meta.w}" height="${meta.h}"></canvas><div class="sub">${meta.durations.length}f · loop ${lo}..${hi} · ${meta.durations[0]}ms</div>`;
+        grid.appendChild(el);
+        const cv = el.querySelector("canvas");
+        const ctx = cv.getContext("2d");
+        const pill = el.querySelector(".pill");
+        cards.push({ st, meta, img, cv, ctx, pill, moodCache: {}, frame: 0, elapsed: 0 });
+        ready++;
+        document.getElementById("status").textContent = `${ready} / ${STATES.length} loaded`;
+      }));
+    }
+
+    function sourceFor(card) {
+      if (card.st.moodable && currentMood !== "normal") {
+        if (!card.moodCache[currentMood]) {
+          card.moodCache[currentMood] = buildMoodCanvas(card.img, MOOD_LOOK[currentMood], card.meta.w, card.meta.h);
+        }
+        return card.moodCache[currentMood];
+      }
+      return card.img;
+    }
+
+    let prev = performance.now();
+    function step(now) {
+      const dt = Math.min(100, now - prev);
+      prev = now;
+      for (const card of cards) {
+        if (!paused) {
+          card.elapsed += dt;
+          while (card.elapsed >= card.meta.durations[card.frame]) {
+            card.elapsed -= card.meta.durations[card.frame];
+            card.frame = (card.frame + 1) % card.meta.durations.length;
+          }
+        }
+        const m = card.meta;
+        const sx = (card.frame % m.cols) * m.w, sy = Math.floor(card.frame / m.cols) * m.h;
+        card.ctx.clearRect(0, 0, m.w, m.h);
+        card.ctx.drawImage(sourceFor(card), sx, sy, m.w, m.h, 0, 0, m.w, m.h);
+        const moodOn = card.st.moodable && currentMood !== "normal";
+        card.pill.textContent = moodOn ? `${card.st.kind} · ${currentMood}` : card.st.kind;
+        card.pill.className = moodOn ? "pill mood-on" : "pill";
+      }
+      requestAnimationFrame(step);
+    }
+
+    document.querySelectorAll("[data-mood]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        currentMood = btn.dataset.mood;
+        document.querySelectorAll("[data-mood]").forEach((b) => b.classList.toggle("active", b === btn));
+      });
+    });
+    const playBtn = document.getElementById("toggle-play");
+    playBtn.addEventListener("click", () => {
+      paused = !paused;
+      playBtn.textContent = paused ? "Play" : "Pause";
+    });
+
+    loadAll().then(() => requestAnimationFrame(step));
+  </script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "atom",
+  "displayName": "Atom",
+  "version": "1.0.0",
+  "author": "Arnav8452",
+  "license": "MIT",
+  "homepage": "https://github.com/Arnav8452/atom",
+  "repository": "https://github.com/Arnav8452/atom",
+  "description": "A pixel mascot that stands on Antigravity's prompt bar and reacts to what the agent is doing."
+}

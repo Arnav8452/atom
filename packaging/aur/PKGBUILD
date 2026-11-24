@@ -1,0 +1,57 @@
+# Maintainer: Arnav8452 <https://github.com/Arnav8452>
+pkgname=antigravity-atom-git
+pkgver=r1.0.0
+pkgrel=1
+pkgdesc="A pixel mascot on Antigravity's prompt bar with 19 animated states and sustained moods"
+arch=('any')
+url="https://github.com/Arnav8452/atom"
+license=('MIT')
+depends=('python')
+makedepends=('git')
+install=antigravity-atom-git.install
+source=("${pkgname}::git+https://github.com/Arnav8452/atom.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "${srcdir}/${pkgname}"
+  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+package() {
+  cd "${srcdir}/${pkgname}"
+
+  install -d "${pkgdir}/opt/antigravity-atom/assets/atom"
+  install -m644 plugin.json hooks.json atom_inject.js LICENSE README.md "${pkgdir}/opt/antigravity-atom/"
+  install -m755 atom_hook.py atom_launch.py install.sh "${pkgdir}/opt/antigravity-atom/"
+  cp -r assets/atom/* "${pkgdir}/opt/antigravity-atom/assets/atom/"
+
+  install -d "${pkgdir}/usr/bin"
+  cat > "${pkgdir}/usr/bin/antigravity-atom" <<'EOF'
+#!/usr/bin/env bash
+exec python3 /opt/antigravity-atom/atom_launch.py "$@"
+EOF
+  chmod 755 "${pkgdir}/usr/bin/antigravity-atom"
+
+  cat > "${pkgdir}/usr/bin/atom-setup" <<'EOF'
+#!/usr/bin/env bash
+exec /opt/antigravity-atom/install.sh "$@"
+EOF
+  chmod 755 "${pkgdir}/usr/bin/atom-setup"
+
+  install -d "${pkgdir}/usr/share/applications"
+  cat > "${pkgdir}/usr/share/applications/antigravity-atom.desktop" <<'EOF'
+[Desktop Entry]
+Name=Antigravity (Atom)
+Exec=/usr/bin/antigravity-atom %U
+Terminal=false
+Type=Application
+Icon=antigravity
+StartupWMClass=Antigravity
+Comment=Antigravity - Agentic Desktop Application (with Atom)
+MimeType=x-scheme-handler/antigravity;
+Categories=Development;
+X-Atom-Mascot=true
+EOF
+
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

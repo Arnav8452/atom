@@ -1,0 +1,9 @@
+post_install() {
+  echo "[atom] Installed to /opt/antigravity-atom."
+  echo "[atom] Launch 'antigravity-atom' (auto-links hooks on first run) or run 'atom-setup'"
+  echo "[atom] to override your user ~/.local/share/applications/antigravity.desktop entry."
+}
+
+post_upgrade() {
+  post_install
+}

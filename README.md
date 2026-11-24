@@ -1,0 +1,221 @@
+# Atom — a prompt-bar mascot for Antigravity
+
+![Atom Mood Board](assets/moodboard.gif)
+
+A tiny open-source pixel companion that stands on the prompt bar inside the
+**Antigravity desktop app** and reacts in real time to what the agent is doing
+— reasoning, editing code, running commands, exploring files, delegating
+subagents, or reacting to your tone.
+
+- **19 code-generated animated states:** every state (`idle`, `thinking`,
+  `typing`, `working`, `exploring`, `running`, `delegating`, `asking`,
+  `listening`, `watching`, `closed`, `dance`, `done`, `happy`, `sad`, `angry`,
+  `error`, `canceled`, `tired`) is rendered programmatically onto transparent
+  32-bit RGBA sprite sheets (`150×120` lossless WebP) sharing `base.gif`'s
+  clean pixel silhouette and scrolling Gemini rainbow beanie.
+- **Silky transitions without stutter:** switches use direct `requestAnimationFrame`
+  60fps `140 ms` crossfades (no fast-forward rushing), while busy work states
+  stay visible for at least `1.2 s` so rapid tool steps don't flicker past.
+- **Sustained turn moods (`angry` & `sad`):** insults, profanity, or
+  all-caps frustration tint Atom red (or muted blue for sadness) with tilted
+  `\ /` or `/ \` eyes across *every* working animation until the response
+  completes.
+- **Click to dance:** click Atom's body anytime (when calm) to trigger its
+  groovy `dance` animation (`Shift+click` switches skins if more than one
+  folder exists under `assets/`).
+- **Size follows the bar:** scales to 9% of the prompt bar's width (72–132 px)
+  and tracks sidebar collapse/resize transitions automatically.
+
+## How it works
+
+```
+Antigravity agent ──hooks.json──▶ atom_hook.py ──▶ ~/.antigravity-atom/*.json
+                                                          │
+atom_launch.py ──starts──▶ Antigravity app                ▼
+      └── DevTools CDP ──▶ main window: atom_inject.js ◀─ state + mood
+```
+
+- **Hooks** (`plugin.json` + `hooks.json`, an Antigravity plugin): runs
+  `python3 -S -I ./atom_hook.py` on all 6 lifecycle events (`SessionStart`,
+  `PreInvocation`, `PreToolUse`, `PostToolUse`, `PostInvocation`, `Stop`),
+  writes per-conversation state/mood JSON, and wakes the launcher immediately
+  via `notify.sock` (Linux/macOS) or loopback UDP `notify.port` (Windows).
+- **In-app rendering:** `atom_launch.py` launches Antigravity with
+  `--remote-debugging-pipe` on Linux/macOS (or loopback `--remote-debugging-port`
+  over a stdlib WebSocket client on Windows), injects the lightweight (<30 KB)
+  `atom_inject.js` bootstrap, and streams per-state sprites lazily via
+  `__loadState` only into pages that mount `[data-testid="agent-input-box"]`.
+
+## Install
+
+Requires only **Python 3** (no pip dependencies).
+
+### One-line install (Linux & macOS)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Arnav8452/atom/main/install.sh | bash
+```
+
+Or from a local clone:
+
+```bash
+git clone https://github.com/Arnav8452/atom.git atom && cd atom
+./install.sh
+./install.sh --uninstall
+```
+
+- Links this folder to `~/.gemini/config/plugins/atom` (and `atom_launch.py` also
+  auto-links or copies the hooks plugin on first launch if missing).
+- On **Linux**: creates `~/.local/share/applications/antigravity.desktop`
+  so app launchers and `antigravity://` links start Antigravity via `atom_launch.py`.
+- On **macOS**: creates `~/Applications/Antigravity (Atom).app` with Antigravity's
+  app icon for Spotlight & Dock (or run `python3 atom_launch.py`).
+
+### Windows (PowerShell)
+
+One-line remote install:
+
+```powershell
+irm https://raw.githubusercontent.com/Arnav8452/atom/main/install.ps1 | iex
+```
+
+Or from a local clone:
+
+```powershell
+.\install.ps1
+.\install.ps1 -Uninstall
+```
+
+- Installs the plugin into `%USERPROFILE%\.gemini\config\plugins\atom` with
+  Windows-compatible Python hook commands.
+- Creates **Antigravity (Atom)** shortcuts on your Start Menu and Desktop.
+
+### Native Package Manifests (`packaging/`)
+
+Ready-to-use package manifests live under [`packaging/`](packaging):
+- **Arch Linux (AUR):** [`packaging/aur/PKGBUILD`](packaging/aur/PKGBUILD) (`antigravity-atom-git`)
+- **macOS (Homebrew):** [`packaging/homebrew/antigravity-atom.rb`](packaging/homebrew/antigravity-atom.rb)
+- **Windows (Scoop & Winget):** [`packaging/scoop/antigravity-atom.json`](packaging/scoop/antigravity-atom.json) & [`packaging/winget/Arnav8452.AntigravityAtom.yaml`](packaging/winget/Arnav8452.AntigravityAtom.yaml)
+
+Quit Antigravity completely and reopen it through the installed launcher/shortcut
+to meet Atom. (If Antigravity is already running, launching again forwards
+arguments to the existing single instance.)
+
+## States (19 code-generated states)
+
+| State        | Type       | When                                                            | Art                                                |
+| ------------ | ---------- | --------------------------------------------------------------- | -------------------------------------------------- |
+| `idle`       | Base       | `SessionStart`, `Stop` (fidgets once after 7 s idle)            | hover + thin beanie + organic coloured electrons   |
+| `thinking`   | Base       | `PreInvocation` (model reasoning)                               | sky-blue + tucked legs + calm orbits & beanie shimmer|
+| `typing`     | Base       | `PreToolUse` for `write_file` / `edit_file` / patches / delete  | sustained open laptop + overhead loading wave      |
+| `working`    | Base       | `PostToolUse`, `PostInvocation`, other active tools             | spinning pixel gears + focused eyes                |
+| `exploring`  | Base       | `PreToolUse` for `read_file` / `grep` / `search_web` / browser  | pixel document + sweeping cyan scan bar            |
+| `running`    | Base       | `PreToolUse` for `run_command` / `bash` / `terminal`            | dark pixel terminal with scrolling emerald lines   |
+| `delegating` | Base       | `PreToolUse` for `invoke_subagent` / `swarm` / `run_workflow`   | 3 orbiting mini-Atom buddies with link dots        |
+| `asking`     | Base       | `PreToolUse` for `ask_question`                                 | speech bubble with pulsing `?` glyph               |
+| `listening`  | Client     | User actively typing in the prompt box (while `idle`/`closed`)  | downward attentive gaze toward the prompt bar      |
+| `watching`   | Base       | `Stop` with `fullyIdle: false` (background tasks still active)  | sweeping eyes + pulsing radar ping                 |
+| `closed`     | Base       | No activity for 5 min                                           | sleepy dim blue body + closed eyes + rising `Zzz`  |
+| `dance`      | Reaction   | Click Atom's body                                               | bouncy side-to-side groove, blinks & music notes   |
+| `done`       | Reaction   | `Stop` (`NO_TOOL_CALL`) completing a busy turn                  | victory hop + `^ ^` eyes + pixel confetti          |
+| `happy`      | Reaction   | Praise ("thanks", "perfect!", "nice work")                      | bright cyan glow + bouncy hop + rising hearts      |
+| `sad`        | Turn mood  | Insults ("idiot", "useless", "stupid", "worthless", ...)        | muted blue tint + tilted `/ \` eyes across active states until reply ends |
+| `angry`      | Turn mood  | Abuse/frustration ("wtf", "fuck u", "shut up", ALL CAPS, ...)   | red tint + tilted `\ /` eyes across active states until reply ends        |
+| `error`      | Reaction   | `PostToolUse` with `error` or `Stop` (`ERROR`)                  | startled jolt + `X X` eyes + flashing `!` badge    |
+| `canceled`   | Reaction   | `Stop` (`USER_CANCELED`)                                        | wide `O O` surprised eyes + muted electrons        |
+| `tired`      | Reaction   | `Stop` (`MAX_INVOCATIONS` / token limit)                        | heavy droop + half-lidded eyes + sweat drop        |
+
+### How to trigger reactions & test states
+
+- **On screen:** click Atom's body to make it **dance** (`Shift+click` switches skins if more than one is installed; clicking does not dance while `angry` or `sad`).
+- **In chat:**
+  - `angry`: send curses, hostility, or frustration like `"wtf"`, `"fuck u"`, `"shut up"`, `"stfu"`, `"still broken"`, or an ALL-CAPS sentence like `"WHY IS THIS NOT WORKING"`. Atom heats up to red with tilted `\ /` eyes across every active work animation (`thinking`, `exploring`, `typing`, `running`, `working`, etc.) until the response finishes, then cools back to blue.
+  - `sad`: send insults like `"idiot"`, `"useless"`, `"worthless"`, `"stupid"`, `"you're garbage"`, `"this code is trash"`, or `"you suck"`. Atom shifts to a muted blue tint with tilted `/ \` eyes across all work animations until the response finishes, then warms back up.
+  - `happy`: send thanks/praise like `"thanks!"`, `"perfect!"`, or `"nice work"`.
+- **Live preview CLI & gallery** (triggers any state/mood live, or views all 19 × 3 combinations in your browser):
+
+```bash
+python3 tools/trigger_state.py --gallery              # interactive grid of all 19 states x Normal/Angry/Sad
+python3 tools/trigger_state.py typing --mood angry    # live angry-tinted + tilted-eye typing
+python3 tools/trigger_state.py thinking --mood sad    # live sad-tinted + tilted-eye thinking
+python3 tools/trigger_state.py --tour --mood angry    # cycle work states in angry mood
+python3 tools/trigger_state.py --tour-all             # cycle normal, angry work, and sad work states
+```
+
+- **Smooth transitions & dwell time.** Switches finish the current frame cleanly
+  and crossfade at 60fps over `140 ms` without fast-forwarding. Busy states
+  stay on screen for at least `1.2 s` before switching so rapid tool steps
+  remain easy to spot.
+- **Reactions vs. turn moods.** One-shot reactions (`dance` / `happy` / `done` /
+  `error` / `canceled` / `tired`) play once at natural speed and return to the
+  agent's state. Turn moods (`angry` / `sad`) tint Atom's body and tilt its eyes
+  across every active working state for that message, suppress dancing while
+  active, and smoothly cool/recover on `Stop`.
+- **What counts as an emotion:** they come from your message (`lastUserInput`
+  on the first model call of a turn). Code in backticks, URLs, and paths are
+  ignored, common technical phrases (e.g., "garbage collector", "worst-case",
+  SQL queries) are filtered out, and words like "amazing" only count in short
+  replies.
+- **Fallback art:** states without their own art reuse the idle animation
+  lazily on first use, with only the blue body pixels recoloured and a
+  different speed (`FALLBACK_LOOK` in `atom_inject.js`). Everything stays fully
+  opaque; recolouring yields cleanly so the app never stalls.
+
+## Adding art
+
+Sprites are frame grids, `assets/<skin>/<state>.webp` (150×120 per frame,
+lossless), with `<state>.json` for the timings and optional `"loop": [start, end]`
+segment bounds. `./tools/build_assets.sh` runs `tools/render_all.py` to
+programmatically regenerate all 19 states directly onto
+transparent RGBA sheets from `art/base.gif` and `art/gemini.gif`. To add custom art for
+a state or second skin:
+
+```bash
+uv run --with pillow tools/make_sprite.py sad_render.gif atom sad --center-x 417
+```
+
+A second folder under `assets/` becomes a second skin; with more than one,
+`Shift+click` on Atom's body switches between them.
+
+`--center-x` is the x of the body's centre in the render; feet are assumed at
+y≈222, so every state lines up. If a haze shows around the sprite, raise
+`--floor` (`thinking` uses `--floor 44`). Restart the app to pick up new art.
+
+## Tests
+
+```bash
+python3 -m unittest discover -s tests -v
+node --test tests/test_atom_inject.mjs
+```
+
+## Project Layout
+
+```
+plugin.json, hooks.json         Antigravity plugin manifest & lifecycle hooks
+atom_hook.py                    hook -> state/mood files (stdlib, ~20 ms per event)
+atom_launch.py                  cross-platform launcher & CDP injector (Linux/macOS/Windows)
+atom_inject.js                  in-app mascot renderer, 60fps crossfades, mood tint/eye tilt
+assets/atom/                    19 lossless WebP sprite sheets + frame/loop JSON metadata
+assets/moodboard.{gif,webp}     animated 16:9 showcase card
+tools/render_all.py             code-generated renderer for all 19 states
+tools/render_gemini_typing.py   base silhouette extractor & rainbow crown sampler
+tools/render_idle.py            standalone idle GIF/RGBA renderer
+tools/render_moodboard.py       animated mood board builder (GIF + WebP)
+tools/trigger_state.py          live preview CLI + local --gallery server
+tools/preview.html              interactive browser gallery (19 states × Normal/Angry/Sad)
+tools/make_sprite.py            custom render -> sprite sheet helper (optional Pillow)
+tools/build_assets.sh           rebuild all 19 sprite sheets
+art/                            original source artwork and reference renders
+packaging/                      AUR PKGBUILD, Homebrew formula, Scoop & Winget manifests
+tests/                          Python & Node.js unit test suite
+install.sh, install.ps1         Linux/macOS (.app bundle) & Windows remote/local installers
+LICENSE                         MIT License
+```
+
+## Notes
+
+- Licensed under the **MIT License** — see [LICENSE](LICENSE).
+- `PreToolUse` prints nothing, so Antigravity's own permission settings still
+  decide whether a tool runs.
+- Placement relies on the app's `data-testid="agent-input-box"`. If an app
+  update renames it, Atom just doesn't appear; the app itself is unaffected.

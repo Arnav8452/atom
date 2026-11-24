@@ -1,0 +1,17 @@
+PackageIdentifier: Arnav8452.AntigravityAtom
+PackageVersion: 1.0.0
+PackageName: Antigravity (Atom)
+Publisher: Arnav8452
+PackageUrl: https://github.com/Arnav8452/atom
+License: MIT
+ShortDescription: Pixel mascot on Antigravity's prompt bar with 19 animated states and sustained moods.
+PackageLocale: en-US
+Installers:
+  - Architecture: x64
+    InstallerType: zip
+    NestedInstallerType: portable
+    InstallerUrl: https://github.com/Arnav8452/atom/archive/refs/heads/main.zip
+    Commands:
+      - atom_launch.py
+ManifestType: singleton
+ManifestVersion: 1.6.0
