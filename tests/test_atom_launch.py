@@ -520,6 +520,21 @@ class PreviewToolsTests(unittest.TestCase):
             second = atom_launch.ensure_hooks_installed(plugins_dir=plugins_dir)
             self.assertEqual(second, first)
 
+    def test_sync_hook_copy_refreshes_stale_windows_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "atom"
+            target.mkdir()
+            # An older install: chosen interpreter, outdated hook and hooks.json.
+            (target / "hooks.json").write_text('{"command": "py -3 -S -I ./atom_hook.py", "timeout": 5}')
+            (target / "atom_hook.py").write_text("old")
+            self.assertTrue(atom_launch.sync_hook_copy(atom_launch.ROOT, target))
+            hooks = (target / "hooks.json").read_text()
+            self.assertIn('"py -3 -S -I ./atom_hook.py PreToolUse || exit 0"', hooks)
+            self.assertNotIn("python3", hooks)
+            self.assertEqual((target / "atom_hook.py").read_bytes(), (atom_launch.ROOT / "atom_hook.py").read_bytes())
+            self.assertTrue((target / "plugin.json").is_file())
+            self.assertFalse(atom_launch.sync_hook_copy(atom_launch.ROOT, target))
+
     def test_trigger_state_limit_flags(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             orig_home = atom_hook.HOME
@@ -551,3 +566,57 @@ class PreviewToolsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(os.name == "nt", "Linux binary lookup")
+class LinuxAppBinaryTests(unittest.TestCase):
+    """Finding Antigravity when it was installed by hand, not by a package."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.home = self.tmp / "home"
+        self.home.mkdir()
+        real_check = atom_launch._is_app_binary
+        # Only accept files inside this test's folder, so the machine's own install is ignored.
+        self.patches = [
+            mock.patch.object(Path, "home", return_value=self.home),
+            mock.patch.dict(os.environ, {"XDG_DATA_HOME": str(self.home / ".local" / "share"),
+                                         "XDG_DATA_DIRS": str(self.tmp / "usr-share")}),
+            mock.patch.object(atom_launch.shutil, "which", return_value=None),
+            mock.patch.object(atom_launch, "_is_app_binary",
+                              side_effect=lambda p: str(p).startswith(str(self.tmp)) and real_check(p)),
+        ]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self) -> None:
+        for p in reversed(self.patches):
+            p.stop()
+        self._tmp.cleanup()
+
+    def _exe(self, path: Path, body: str = "#!/bin/sh\n") -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body)
+        path.chmod(0o755)
+        return path
+
+    def test_finds_extracted_archive(self) -> None:
+        exe = self._exe(self.home / "Apps" / "Antigravity-2.30.0" / "antigravity")
+        self.assertEqual(atom_launch._linux_app_binary(), str(exe))
+
+    def test_reads_desktop_exec_and_skips_atom_entry(self) -> None:
+        exe = self._exe(self.tmp / "my apps" / "AG" / "antigravity")
+        apps = self.home / ".local" / "share" / "applications"
+        apps.mkdir(parents=True)
+        (apps / "antigravity.desktop").write_text(
+            "[Desktop Entry]\nExec=python3 /x/atom_launch.py %U\nX-Atom-Mascot=true\n")
+        (apps / "antigravity-manual.desktop").write_text(
+            f'[Desktop Entry]\nExec=env ELECTRON_OZONE_PLATFORM_HINT=wayland "{exe}" %U\n')
+        self.assertEqual(atom_launch._linux_app_binary(), str(exe))
+
+    def test_skips_atom_wrapper_scripts(self) -> None:
+        self._exe(self.home / "Antigravity" / "antigravity", "#!/bin/sh\nexec python3 ~/atom/atom_launch.py\n")
+        self.assertEqual(atom_launch._linux_app_binary(), "/opt/Antigravity/antigravity")  # not found: default
+        real = self._exe(self.home / "Antigravity" / "Antigravity")
+        self.assertEqual(atom_launch._linux_app_binary(), str(real))

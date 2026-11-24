@@ -1,19 +1,19 @@
 {
   "atom-mascot": {
     "SessionStart": [
-      { "type": "command", "command": "python3 -S -I ./atom_hook.py", "timeout": 5 }
+      { "type": "command", "command": "python3 -S -I ./atom_hook.py SessionStart || exit 0", "timeout": 5 }
     ],
     "PreInvocation": [
-      { "type": "command", "command": "python3 -S -I ./atom_hook.py", "timeout": 5 }
+      { "type": "command", "command": "python3 -S -I ./atom_hook.py PreInvocation || exit 0", "timeout": 5 }
     ],
     "PostInvocation": [
-      { "type": "command", "command": "python3 -S -I ./atom_hook.py", "timeout": 5 }
+      { "type": "command", "command": "python3 -S -I ./atom_hook.py PostInvocation || exit 0", "timeout": 5 }
     ],
     "PreToolUse": [
       {
         "matcher": "*",
         "hooks": [
-          { "type": "command", "command": "python3 -S -I ./atom_hook.py", "timeout": 5 }
+          { "type": "command", "command": "python3 -S -I ./atom_hook.py PreToolUse || exit 0", "timeout": 5 }
         ]
       }
     ],
@@ -21,12 +21,12 @@
       {
         "matcher": "*",
         "hooks": [
-          { "type": "command", "command": "python3 -S -I ./atom_hook.py", "timeout": 5 }
+          { "type": "command", "command": "python3 -S -I ./atom_hook.py PostToolUse || exit 0", "timeout": 5 }
         ]
       }
     ],
     "Stop": [
-      { "type": "command", "command": "python3 -S -I ./atom_hook.py", "timeout": 5 }
+      { "type": "command", "command": "python3 -S -I ./atom_hook.py Stop || exit 0", "timeout": 5 }
     ]
   }
 }

@@ -26,6 +26,7 @@ import json
 import os
 import re
 import select
+import shlex
 import shutil
 import signal
 import socket
@@ -125,20 +126,102 @@ def app_binary() -> str:
             if found and os.path.realpath(found) != os.path.realpath(__file__):
                 return found
         return candidates[0]
-    candidates = (
+    return _linux_app_binary()
+
+
+LINUX_APP_NAMES = ("antigravity", "Antigravity")
+
+
+def _is_app_binary(path: str) -> bool:
+    """An executable Antigravity file that isn't Atom's own launcher or a wrapper around it."""
+    if not (os.path.isfile(path) and os.access(path, os.X_OK)):
+        return False
+    real = os.path.realpath(path)
+    if real == os.path.realpath(__file__):
+        return False
+    try:
+        if os.path.getsize(real) < 65536:  # a script, not the Electron binary
+            with open(real, "rb") as fh:
+                if b"atom_launch" in fh.read():
+                    return False
+    except OSError:
+        return False
+    return True
+
+
+def _desktop_exec_binaries() -> list[str]:
+    """Antigravity binaries named in .desktop launchers (finds custom install folders)."""
+    home = Path.home()
+    data_home = Path(os.environ.get("XDG_DATA_HOME") or home / ".local" / "share")
+    data_dirs = [data_home] + [Path(d) for d in (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":") if d]
+    found: list[str] = []
+    for folder in [d / "applications" for d in data_dirs] + [home / "Desktop"]:
+        try:
+            entries = sorted(folder.glob("*.desktop"))
+        except OSError:
+            continue
+        for entry in entries:
+            if "antigravity" not in entry.name.lower():
+                continue
+            try:
+                text = entry.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if "X-Atom-Mascot=true" in text:
+                continue
+            m = re.search(r"^Exec=(.+)$", text, re.MULTILINE)
+            if not m:
+                continue
+            try:
+                tokens = shlex.split(m.group(1))
+            except ValueError:
+                continue
+            while tokens and (tokens[0] == "env" or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[0])):
+                tokens.pop(0)
+            if not tokens or not os.path.basename(tokens[0]).lower().startswith("antigravity"):
+                continue
+            exe = tokens[0] if os.path.isabs(tokens[0]) else shutil.which(tokens[0])
+            if exe:
+                found.append(exe)
+    return found
+
+
+def _linux_app_binary() -> str:
+    home = Path.home()
+    fixed = [
         "/opt/Antigravity/antigravity",
         "/usr/bin/antigravity",
         "/usr/lib/antigravity/antigravity",
         "/usr/share/antigravity/antigravity",
-        str(Path.home() / ".local" / "bin" / "antigravity"),
-    )
-    for candidate in candidates:
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+        str(home / ".local" / "bin" / "antigravity"),
+    ]
+    for candidate in fixed:
+        if _is_app_binary(candidate):
             return candidate
     found = shutil.which("antigravity")
-    if found and os.path.realpath(found) != os.path.realpath(__file__):
+    if found and _is_app_binary(found):
         return found
-    return candidates[0]
+    for candidate in _desktop_exec_binaries():
+        if _is_app_binary(candidate):
+            return candidate
+    # Manually extracted archives: <root>/Antigravity*/antigravity, one level deep.
+    roots = [
+        "/opt", "/usr/local", "/usr/lib", "/usr/share",
+        home / ".local" / "share", home / ".local" / "opt", home / ".local" / "lib", home / ".local",
+        home / "opt", home / "Applications", home / "Apps", home / "apps", home / "Programs",
+        home / "programs", home / "bin", home, home / "Downloads",
+    ]
+    for root in roots:
+        try:
+            dirs = sorted(p for p in Path(root).iterdir() if p.name.lower().startswith("antigravity") and p.is_dir())
+        except OSError:
+            continue
+        for d in dirs:
+            for name in LINUX_APP_NAMES:
+                candidate = str(d / name)
+                if _is_app_binary(candidate):
+                    return candidate
+    return fixed[0]
 
 
 def log(msg: str) -> None:
@@ -1039,8 +1122,36 @@ def _launch_windows(binary: str, args: list[str]) -> tuple[subprocess.Popen, WsC
     return app, ws_connect(ws_url)
 
 
+def sync_hook_copy(src: Path, target: Path) -> bool:
+    """Copy the hooks plugin into target (Windows), refreshing stale files.
+
+    An outdated copy can block every tool call, so files are rewritten when
+    this checkout changes, keeping the Python command an earlier install
+    chose. Returns True if anything was written.
+    """
+    old_hooks = target / "hooks.json"
+    m = None
+    if old_hooks.is_file():
+        m = re.search(r'"command":\s*"(.+?) -S -I \./atom_hook\.py', old_hooks.read_text(encoding="utf-8"))
+    hook_py = m.group(1) if m else ("py -3" if shutil.which("py") else "python")
+    hooks_raw = (src / "hooks.json").read_text(encoding="utf-8")
+    files = {
+        "plugin.json": (src / "plugin.json").read_bytes(),
+        "atom_hook.py": (src / "atom_hook.py").read_bytes(),
+        "hooks.json": hooks_raw.replace(
+            "python3 -S -I ./atom_hook.py", f"{hook_py} -S -I ./atom_hook.py"
+        ).encode("utf-8"),
+    }
+    stale = [n for n, data in files.items() if not (target / n).is_file() or (target / n).read_bytes() != data]
+    if stale:
+        target.mkdir(parents=True, exist_ok=True)
+        for name in stale:
+            (target / name).write_bytes(files[name])
+    return bool(stale)
+
+
 def ensure_hooks_installed(plugins_dir: Path | None = None, root: Path | None = None) -> Path | None:
-    """Link or copy the hooks plugin into Antigravity's plugins dir if missing."""
+    """Link (POSIX) or copy and refresh (Windows) the hooks plugin into Antigravity's plugins dir."""
     src = root or ROOT
     if not ((src / "plugin.json").is_file() and (src / "hooks.json").is_file()):
         return None
@@ -1055,17 +1166,8 @@ def ensure_hooks_installed(plugins_dir: Path | None = None, root: Path | None = 
             base_dir.mkdir(parents=True, exist_ok=True)
             target.symlink_to(src)
         else:
-            if (target / "hooks.json").is_file():
+            if not sync_hook_copy(src, target):
                 return target
-            target.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src / "plugin.json", target / "plugin.json")
-            shutil.copy2(src / "atom_hook.py", target / "atom_hook.py")
-            hook_py = "py -3" if shutil.which("py") else "python"
-            hooks_raw = (src / "hooks.json").read_text(encoding="utf-8")
-            (target / "hooks.json").write_text(
-                hooks_raw.replace("python3 -S -I ./atom_hook.py", f"{hook_py} -S -I ./atom_hook.py"),
-                encoding="utf-8",
-            )
         log(f"installed hooks plugin -> {target}")
         return target
     except OSError as e:

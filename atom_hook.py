@@ -6,6 +6,11 @@ event payload as JSON on stdin. Hooks block the agent loop, so this stays
 stdlib-only (-S -I safe), does tiny atomic file writes plus an optional datagram
 wakeup, and always exits 0.
 
+Antigravity blocks the tool call when a PreToolUse hook fails, prints any
+JSON (even "{}" means deny) or times out. So this hook fails open: hooks.json
+ends each command with "|| exit 0" (in case Python can't start) and a watchdog
+exits 0 with no output well before Antigravity's timeout.
+
 Event -> state (order verified against Antigravity):
   SessionStart              idle
   PreInvocation             thinking  (the first one of a turn also reads
@@ -30,6 +35,7 @@ import os
 import re
 import socket
 import sys
+import threading
 import time
 
 HOME = os.environ.get("ATOM_HOME") or os.path.join(os.path.expanduser("~"), ".antigravity-atom")
@@ -44,6 +50,8 @@ EVENT_STATE = {
 }
 
 BUSY_STATES = frozenset({"thinking", "typing", "working", "exploring", "running", "delegating", "asking"})
+# hooks.json gives each command 5 s. Leave quietly well before that.
+WATCHDOG_SEC = 2.0
 LIMIT_TTL_SEC = 5 * 3600
 WEEKLY_LIMIT_TTL_SEC = 7 * 24 * 3600
 QUOTA_ERROR_RE = re.compile(
@@ -386,24 +394,35 @@ def handle(payload: dict) -> None:
 
 
 def main() -> None:
-    event = None
+    # If anything below hangs (stdin never closed, a stuck filesystem), exit 0
+    # with no output instead of letting Antigravity kill the hook, which would
+    # block the tool call.
+    watchdog = threading.Timer(WATCHDOG_SEC, os._exit, (0,))
+    watchdog.daemon = True
+    watchdog.start()
+    # hooks.json passes the event name as argv[1]. Older Antigravity builds
+    # don't put "hookEventName" in the payload, so argv is the source of truth.
+    event = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] in EVENT_STATE else None
     try:
         raw = sys.stdin.read()
         payload = json.loads(raw) if raw.strip() else {}
         if isinstance(payload, dict):
-            event = payload.get("hookEventName")
-            try:
-                handle(payload)
-            except Exception:
-                pass
+            if event:
+                payload["hookEventName"] = event
+            else:
+                event = payload.get("hookEventName")
+            handle(payload)
     except Exception:
         pass
-    # PreToolUse: print nothing, which leaves the permission decision to
-    # Antigravity (any "decision" here would override the user's settings).
-    # Every other event takes an empty JSON object as "no changes".
-    if event != "PreToolUse":
+    finally:
+        watchdog.cancel()
+    # PreToolUse: print nothing. Antigravity reads any JSON here, even "{}",
+    # as a decision, and "{}" means DENY: every tool call would be blocked.
+    # Every other event takes an empty JSON object as "no changes". If the
+    # event is unknown, print nothing: empty stdout is safe for every event.
+    if event in EVENT_STATE and event != "PreToolUse":
         sys.stdout.write("{}")
-
+        sys.stdout.flush()
 
 if __name__ == "__main__":
     main()

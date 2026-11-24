@@ -296,6 +296,73 @@ class HookLifecycleTests(unittest.TestCase):
             atom_hook.main()
         self.assertEqual(buf2.getvalue(), "{}")
 
+    def _main_with(self, argv: list[str], stdin: str) -> str:
+        buf = io.StringIO()
+        with (
+            mock.patch.object(sys, "argv", argv),
+            mock.patch.object(sys, "stdin", io.StringIO(stdin)),
+            mock.patch.object(sys, "stdout", buf),
+        ):
+            atom_hook.main()
+        return buf.getvalue()
+
+    def test_event_from_argv_when_payload_lacks_name(self) -> None:
+        # Older Antigravity builds omit "hookEventName". A PreToolUse hook that
+        # prints "{}" denies the tool call, so it must stay silent.
+        payload = json.dumps({"conversationId": "old-1", "toolCall": {"name": "view_file"}})
+        self.assertEqual(self._main_with(["atom_hook.py", "PreToolUse"], payload), "")
+        conv = json.loads((Path(self.tmp.name) / "convs" / "old-1.json").read_text())
+        self.assertEqual(conv["state"], "exploring")
+        self.assertEqual(self._main_with(["atom_hook.py", "PostToolUse"], "not json"), "{}")
+
+    def test_unknown_event_prints_nothing(self) -> None:
+        payload = json.dumps({"conversationId": "old-2"})
+        for argv in (["atom_hook.py"], ["atom_hook.py", "Bogus"]):
+            with self.subTest(argv=argv):
+                self.assertEqual(self._main_with(argv, payload), "")
+
+    def test_hooks_json_commands_fail_open(self) -> None:
+        spec = json.loads((ROOT / "hooks.json").read_text())["atom-mascot"]
+        for event, entries in spec.items():
+            for handler in entries[0].get("hooks", entries):
+                with self.subTest(event=event):
+                    self.assertTrue(handler["command"].endswith(f"./atom_hook.py {event} || exit 0"))
+                    self.assertGreater(handler["timeout"], atom_hook.WATCHDOG_SEC + 1)
+
+    @unittest.skipIf(os.name == "nt", "POSIX sh")
+    def test_hook_command_exits_zero_when_python_fails(self) -> None:
+        # Antigravity runs the command with sh -c; any non-zero exit blocks the tool.
+        spec = json.loads((ROOT / "hooks.json").read_text())["atom-mascot"]
+        cmd = spec["PreToolUse"][0]["hooks"][0]["command"]
+        with tempfile.TemporaryDirectory() as empty:  # no ./atom_hook.py here
+            proc = subprocess.run(["sh", "-c", cmd], cwd=empty, input="{}", text=True, capture_output=True)
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(proc.stdout, "")
+
+    def test_watchdog_exits_silently_when_stdin_hangs(self) -> None:
+        env = {"ATOM_HOME": self.tmp.name, "PATH": os.environ.get("PATH", "")}
+        for key in ("SYSTEMROOT", "TEMP", "TMP"):
+            if key in os.environ:
+                env[key] = os.environ[key]
+        proc = subprocess.Popen(
+            [sys.executable, "-S", "-I", str(ROOT / "atom_hook.py"), "PostToolUse"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env,
+        )
+        assert proc.stdin is not None and proc.stdout is not None
+        try:
+            # stdin stays open, so the hook blocks reading it until the watchdog fires.
+            proc.wait(timeout=atom_hook.WATCHDOG_SEC + 3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            self.fail("hook outlived its watchdog")
+        finally:
+            proc.stdin.close()
+        out = proc.stdout.read()
+        proc.stdout.close()
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(out, b"")
+
     @unittest.skipIf(os.name == "nt" or not hasattr(socket, "AF_UNIX"), "AF_UNIX SOCK_DGRAM is POSIX-only")
     def test_notify_socket_datagram(self) -> None:
         sock_path = os.path.join(self.tmp.name, "notify.sock")

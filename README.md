@@ -44,7 +44,7 @@ atom_launch.py ──starts──▶ Antigravity app                ▼
 ```
 
 - **Hooks** (`plugin.json` + `hooks.json`, an Antigravity plugin): runs
-  `python3 -S -I ./atom_hook.py` on all 6 lifecycle events (`SessionStart`,
+  `python3 -S -I ./atom_hook.py <Event>` on all 6 lifecycle events (`SessionStart`,
   `PreInvocation`, `PreToolUse`, `PostToolUse`, `PostInvocation`, `Stop`),
   writes per-conversation state/mood/limit JSON, and wakes the launcher
   immediately via `notify.sock` (Linux/macOS) or loopback UDP `notify.port` (Windows).
@@ -68,7 +68,7 @@ If you are an AI coding agent installing Atom into a user's Antigravity setup, p
 | **macOS** | `curl -fsSL https://raw.githubusercontent.com/Arnav8452/atom/main/install.sh \| bash` | `~/.gemini/config/plugins/atom` | `~/Applications/Antigravity (Atom).app` |
 | **Windows** | `irm https://raw.githubusercontent.com/Arnav8452/atom/main/install.ps1 \| iex` | `%USERPROFILE%\.gemini\config\plugins\atom` | Start Menu & Desktop `.lnk` (`Antigravity (Atom)`) |
 
-**Environment overrides:** `ATOM_REPO` (custom git remote), `ATOM_DIR` (install checkout path), `ATOM_HOME` (runtime state dir, default `~/.antigravity-atom`), `ANTIGRAVITY_BIN` (custom Antigravity executable), `ANTIGRAVITY_PLUGINS_DIR` (custom plugins dir).
+**Environment overrides:** `ATOM_REPO` (custom git remote), `ATOM_DIR` (install checkout path), `ATOM_HOME` (runtime state dir, default `~/.antigravity-atom`), `ANTIGRAVITY_BIN` (custom Antigravity executable; on Linux the launcher otherwise checks the usual install paths, `PATH`, other `antigravity*.desktop` launchers, and `Antigravity*/` folders extracted into `/opt`, `~/.local/share`, `~/Applications`, `~/Apps`, `~/Downloads`, `~` and similar), `ANTIGRAVITY_PLUGINS_DIR` (custom plugins dir).
 **Post-install check:** confirm `hooks.json` exists inside the plugin path above, then quit Antigravity completely and launch via the newly installed entry (or `python3 atom_launch.py`). See [`AGENTS.md`](AGENTS.md) for full contributor & automation details.
 
 ---
