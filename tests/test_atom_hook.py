@@ -296,6 +296,7 @@ class HookLifecycleTests(unittest.TestCase):
             atom_hook.main()
         self.assertEqual(buf2.getvalue(), "{}")
 
+    @unittest.skipIf(os.name == "nt" or not hasattr(socket, "AF_UNIX"), "AF_UNIX SOCK_DGRAM is POSIX-only")
     def test_notify_socket_datagram(self) -> None:
         sock_path = os.path.join(self.tmp.name, "notify.sock")
         srv = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
@@ -322,6 +323,9 @@ class HookLifecycleTests(unittest.TestCase):
 
     def test_isolated_subprocess_execution(self) -> None:
         env = {"ATOM_HOME": self.tmp.name, "PATH": os.environ.get("PATH", "")}
+        for key in ("SYSTEMROOT", "TEMP", "TMP"):
+            if key in os.environ:
+                env[key] = os.environ[key]
         proc = subprocess.run(
             [sys.executable, "-S", "-I", str(ROOT / "atom_hook.py")],
             input=json.dumps({"hookEventName": "PostToolUse", "conversationId": "sub1"}),

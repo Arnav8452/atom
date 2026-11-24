@@ -254,7 +254,7 @@ def write_json(path: str, data: dict) -> None:
 
 
 def notify_launcher() -> None:
-    if hasattr(socket, "AF_UNIX"):
+    if hasattr(socket, "AF_UNIX") and os.name != "nt":
         sock_path = os.path.join(HOME, "notify.sock")
         if os.path.exists(sock_path):
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)

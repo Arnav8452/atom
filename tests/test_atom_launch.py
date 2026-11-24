@@ -17,6 +17,7 @@ import atom_launch  # noqa: E402
 from tools import trigger_state  # noqa: E402
 
 
+@unittest.skipIf(os.name == "nt", "Cdp pipe transport is POSIX-only; Windows uses WsCdp")
 class CdpTests(unittest.TestCase):
     def test_read_partial_multi_and_malformed(self) -> None:
         app_to_py_r, app_to_py_w = os.pipe()

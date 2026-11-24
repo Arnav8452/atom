@@ -149,7 +149,7 @@ def log(msg: str) -> None:
 
 def read_json(path: Path) -> dict:
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
@@ -363,7 +363,7 @@ def load_state_payload(name: str, state: str, assets_dir: Path | None = None) ->
     if not (meta.exists() and sheet.exists()):
         return None
     return {
-        **json.loads(meta.read_text()),
+        **json.loads(meta.read_text(encoding="utf-8")),
         "webp": base64.b64encode(sheet.read_bytes()).decode(),
     }
 
@@ -378,7 +378,7 @@ def load_skin_payload(name: str, assets_dir: Path | None = None) -> dict:
         sheet = meta.with_suffix(".webp")
         if meta.stem in STATES and sheet.exists():
             out[meta.stem] = {
-                **json.loads(meta.read_text()),
+                **json.loads(meta.read_text(encoding="utf-8")),
                 "webp": base64.b64encode(sheet.read_bytes()).decode(),
             }
     return out
@@ -387,7 +387,7 @@ def load_skin_payload(name: str, assets_dir: Path | None = None) -> dict:
 def build_bootstrap_script(skin_names: list[str] | None = None) -> str:
     """atom_inject.js with only skin names inlined; WebP sprites load on demand."""
     names = load_skin_names() if skin_names is None else skin_names
-    js = (ROOT / "atom_inject.js").read_text()
+    js = (ROOT / "atom_inject.js").read_text(encoding="utf-8")
     # Strip full-line comments, leading indentation, and blank lines for compact CDP injection.
     js = re.sub(r"^\s*//.*\n", "", js, flags=re.M)
     js = re.sub(r"^[ \t]+", "", js, flags=re.M)
@@ -947,7 +947,7 @@ def _release_lock(lock_file) -> None:
 
 
 def _open_notify_socket(home: Path) -> tuple[socket.socket | None, Path | None, Path | None]:
-    if hasattr(socket, "AF_UNIX"):
+    if hasattr(socket, "AF_UNIX") and os.name != "nt":
         sock_path = home / "notify.sock"
         sock_path.unlink(missing_ok=True)
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
