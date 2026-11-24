@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Compile Python sources
+        run: >-
+          python3 -m py_compile atom_hook.py atom_launch.py
+          tools/render_all.py tools/render_gemini_typing.py tools/render_idle.py
+          tools/render_moodboard.py tools/make_sprite.py tools/trigger_state.py
+      - name: Validate shell scripts
+        run: >-
+          bash -n install.sh tools/build_assets.sh
+          packaging/aur/PKGBUILD packaging/aur/antigravity-atom-git.install
+      - name: Check bootstrap script size and JS syntax
+        run: >-
+          python3 -c 'import atom_launch, subprocess; s=atom_launch.build_bootstrap_script();
+          assert len(s) < 36000; subprocess.run(["node", "--check", "-"], input=s, text=True, check=True)'
+      - name: Run Python unit tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Run Node.js unit tests
+        run: node --test tests/test_atom_inject.mjs

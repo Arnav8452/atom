@@ -209,7 +209,7 @@ tools/make_sprite.py            custom render -> sprite sheet helper (optional P
 tools/build_assets.sh           rebuild all 19 sprite sheets
 art/                            original source artwork and reference renders
 packaging/                      AUR PKGBUILD, Homebrew formula, Scoop & Winget manifests
-tests/                          Python & Node.js unit test suite
+tests/                          Python & Node.js unit test suite + GitHub Actions CI
 install.sh, install.ps1         Linux/macOS (.app bundle) & Windows remote/local installers
 LICENSE                         MIT License
 ```
