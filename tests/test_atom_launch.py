@@ -576,7 +576,8 @@ class PreviewToolsTests(unittest.TestCase):
             ret = atom_launch.main()
             self.assertEqual(ret, 0)
             mock_log.assert_called_with(
-                "Antigravity exited immediately. If it was already running, fully quit all existing instances and relaunch."
+                "Antigravity exited immediately. If it was already running, fully quit all existing instances and relaunch.",
+                color="33",
             )
 
 

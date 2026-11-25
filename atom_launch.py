@@ -224,8 +224,11 @@ def _linux_app_binary() -> str:
     return fixed[0]
 
 
-def log(msg: str) -> None:
-    print(f"[atom] {msg}", file=sys.stderr, flush=True)
+def log(msg: str, color: str = "") -> None:
+    if color and sys.stderr.isatty() and not os.environ.get("NO_COLOR"):
+        print(f"\033[{color}m[atom] {msg}\033[0m", file=sys.stderr, flush=True)
+    else:
+        print(f"[atom] {msg}", file=sys.stderr, flush=True)
 
 
 # --- state ------------------------------------------------------------------
@@ -1231,11 +1234,11 @@ def main() -> int:
         if cdp is None:
             if is_primary:
                 if app.poll() == 0:
-                    log("Antigravity exited immediately. If it was already running, fully quit all existing instances and relaunch.")
+                    log("Antigravity exited immediately. If it was already running, fully quit all existing instances and relaunch.", color="33")
                 elif app.poll() is not None:
-                    log(f"Antigravity exited with code {app.poll()}.")
+                    log(f"Antigravity exited with code {app.poll()}.", color="31")
                 else:
-                    log("DevTools connection timed out.")
+                    log("DevTools connection timed out.", color="33")
             return app.wait()
 
         atom = Atom(cdp)
@@ -1243,7 +1246,7 @@ def main() -> int:
             atom.start()
         except OSError:
             if is_primary and app.poll() == 0:
-                log("Antigravity exited immediately. If it was already running, fully quit all existing instances and relaunch.")
+                log("Antigravity exited immediately. If it was already running, fully quit all existing instances and relaunch.", color="33")
 
         read_sel = cdp.read_selectable()
         write_sel = cdp.write_selectable()
