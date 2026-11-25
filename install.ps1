@@ -16,8 +16,12 @@ $PluginDir = Join-Path $env:USERPROFILE ".gemini\config\plugins\atom"
 $StartMenuShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Antigravity (Atom).lnk"
 $DesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "Antigravity (Atom).lnk"
 
-function Say([string]$Msg) {
-  Write-Host "[atom] $Msg"
+function Say([string]$Msg, [string]$Color = "") {
+  if ($Color) {
+    Write-Host "[atom] $Msg" -ForegroundColor $Color
+  } else {
+    Write-Host "[atom] $Msg"
+  }
 }
 
 if ($Uninstall) {
@@ -111,4 +115,7 @@ foreach ($lnkPath in @($StartMenuShortcut, $DesktopShortcut)) {
   Say "shortcut: $lnkPath"
 }
 
-Say "done. Quit Antigravity and start 'Antigravity (Atom)' from your Start Menu or Desktop."
+if (Get-Process Antigravity -ErrorAction SilentlyContinue) {
+  Say "note: Antigravity is running. Fully quit it (check the system tray) before starting 'Antigravity (Atom)'." Yellow
+}
+Say "done. Start 'Antigravity (Atom)' from your Start Menu or Desktop." Green

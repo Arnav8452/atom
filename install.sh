@@ -19,6 +19,13 @@ DESKTOP="$APPS_DIR/antigravity.desktop"
 MARK="X-Atom-Mascot=true"
 
 say() { printf '[atom] %s\n' "$*"; }
+warn() {
+  if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+    printf '\033[33m[atom] %s\033[0m\n' "$*"
+  else
+    say "$*"
+  fi
+}
 refresh_desktop_db() { command -v update-desktop-database >/dev/null && update-desktop-database -q "$APPS_DIR" || true; }
 
 if [ "${1:-}" = "--uninstall" ]; then
@@ -125,4 +132,7 @@ EOF
   say "or start from Terminal: python3 \"$SRC/atom_launch.py\""
 fi
 
-say "done. Quit Antigravity and open it again from your launcher to meet Atom."
+if pgrep -f -- '[aA]ntigravity.*--type=' >/dev/null 2>&1; then
+  warn "note: Antigravity is running. Fully quit it before launching."
+fi
+say "done. Open Antigravity from your launcher to meet Atom."

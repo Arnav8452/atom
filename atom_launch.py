@@ -224,8 +224,19 @@ def _linux_app_binary() -> str:
     return fixed[0]
 
 
-def log(msg: str) -> None:
-    print(f"[atom] {msg}", file=sys.stderr, flush=True)
+EARLY_EXIT_MSG = (
+    "Antigravity exited immediately. If it was already running, "
+    "fully quit all existing instances and relaunch."
+)
+
+
+def log(msg: str, color: str = "") -> None:
+    if sys.stderr is None:
+        return
+    if color and sys.stderr.isatty() and not os.environ.get("NO_COLOR"):
+        print(f"\033[{color}m[atom] {msg}\033[0m", file=sys.stderr, flush=True)
+    else:
+        print(f"[atom] {msg}", file=sys.stderr, flush=True)
 
 
 # --- state ------------------------------------------------------------------
@@ -1229,6 +1240,14 @@ def main() -> int:
             signal.signal(sig, forward_signal)
 
         if cdp is None:
+            if is_primary:
+                rc = app.poll()
+                if rc == 0:
+                    log(EARLY_EXIT_MSG, color="33")
+                elif rc is not None:
+                    log(f"Antigravity exited with code {rc}.", color="31")
+                else:
+                    log("DevTools connection timed out.", color="33")
             return app.wait()
 
         atom = Atom(cdp)
@@ -1240,6 +1259,7 @@ def main() -> int:
         read_sel = cdp.read_selectable()
         write_sel = cdp.write_selectable()
         last_poll = 0.0
+        saw_cdp = False
         while True:
             if app.poll() is not None:
                 break
@@ -1265,6 +1285,8 @@ def main() -> int:
                     msgs = None
                 if msgs is None:
                     break  # app closed the channel: it is exiting
+                if msgs:
+                    saw_cdp = True
                 for msg in msgs:
                     try:
                         atom.handle(msg)
@@ -1294,7 +1316,10 @@ def main() -> int:
                     break
                 except Exception as e:
                     log(f"state poll failed: {e!r}")
-        return app.wait()
+        rc = app.wait()
+        if is_primary and not saw_cdp and rc == 0:
+            log(EARLY_EXIT_MSG, color="33")
+        return rc
     finally:
         if cdp is not None:
             cdp.close()
