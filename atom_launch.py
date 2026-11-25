@@ -224,7 +224,15 @@ def _linux_app_binary() -> str:
     return fixed[0]
 
 
+EARLY_EXIT_MSG = (
+    "Antigravity exited immediately. If it was already running, "
+    "fully quit all existing instances and relaunch."
+)
+
+
 def log(msg: str, color: str = "") -> None:
+    if sys.stderr is None:
+        return
     if color and sys.stderr.isatty() and not os.environ.get("NO_COLOR"):
         print(f"\033[{color}m[atom] {msg}\033[0m", file=sys.stderr, flush=True)
     else:
@@ -1233,10 +1241,11 @@ def main() -> int:
 
         if cdp is None:
             if is_primary:
-                if app.poll() == 0:
-                    log("Antigravity exited immediately. If it was already running, fully quit all existing instances and relaunch.", color="33")
-                elif app.poll() is not None:
-                    log(f"Antigravity exited with code {app.poll()}.", color="31")
+                rc = app.poll()
+                if rc == 0:
+                    log(EARLY_EXIT_MSG, color="33")
+                elif rc is not None:
+                    log(f"Antigravity exited with code {rc}.", color="31")
                 else:
                     log("DevTools connection timed out.", color="33")
             return app.wait()
@@ -1245,12 +1254,12 @@ def main() -> int:
         try:
             atom.start()
         except OSError:
-            if is_primary and app.poll() == 0:
-                log("Antigravity exited immediately. If it was already running, fully quit all existing instances and relaunch.", color="33")
+            pass  # app exited immediately (already running); fall through to wait()
 
         read_sel = cdp.read_selectable()
         write_sel = cdp.write_selectable()
         last_poll = 0.0
+        saw_cdp = False
         while True:
             if app.poll() is not None:
                 break
@@ -1276,6 +1285,8 @@ def main() -> int:
                     msgs = None
                 if msgs is None:
                     break  # app closed the channel: it is exiting
+                if msgs:
+                    saw_cdp = True
                 for msg in msgs:
                     try:
                         atom.handle(msg)
@@ -1305,7 +1316,10 @@ def main() -> int:
                     break
                 except Exception as e:
                     log(f"state poll failed: {e!r}")
-        return app.wait()
+        rc = app.wait()
+        if is_primary and not saw_cdp and rc == 0:
+            log(EARLY_EXIT_MSG, color="33")
+        return rc
     finally:
         if cdp is not None:
             cdp.close()

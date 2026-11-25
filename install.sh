@@ -132,7 +132,7 @@ EOF
   say "or start from Terminal: python3 \"$SRC/atom_launch.py\""
 fi
 
-if pgrep -i antigravity >/dev/null 2>&1; then
+if pgrep -f -- '[aA]ntigravity.*--type=' >/dev/null 2>&1; then
   warn "note: Antigravity is running. Fully quit it before launching."
 fi
 say "done. Open Antigravity from your launcher to meet Atom."
