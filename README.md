@@ -29,7 +29,8 @@ subagents, sleeping on quota limits, or reacting to your tone.
   `Zzz`) when the active model reaches its 5-hour or weekly quota limit, and
   wakes immediately when you switch to a model with available quota.
 - **Click to dance:** click Atom's body anytime (when calm and awake) to trigger
-  its groovy `dance` animation (`Shift+click` switches skins if more than one
+  its groovy `dance` animation (`Alt+click` switches between the left and right
+  sides of the prompt bar; `Shift+click` switches skins if more than one
   folder exists under `assets/`).
 - **Size follows the bar:** scales to 9% of the prompt bar's width (72–132 px)
   and tracks sidebar collapse/resize transitions automatically.
@@ -168,7 +169,7 @@ Ready-to-use manifests live under [`packaging/`](packaging):
 
 ### How to trigger reactions & test states
 
-- **On screen:** click Atom's body to make it **dance** (`Shift+click` switches skins if more than one is installed; clicking does not dance while `angry`, `sad`, or sleeping from a quota limit).
+- **On screen:** click Atom's body to make it **dance** (`Alt+click` toggles between the left and right sides of the prompt bar; `Shift+click` switches skins if more than one is installed; clicking does not dance while `angry`, `sad`, or sleeping from a quota limit).
 - **In chat:**
   - `angry`: send curses, hostility, or frustration like `"wtf"`, `"fuck u"`, `"shut up"`, `"stfu"`, `"still broken"`, or an ALL-CAPS sentence like `"WHY IS THIS NOT WORKING"`. Atom heats up to red with tilted `\ /` eyes across every active work animation (`thinking`, `exploring`, `typing`, `running`, `working`, etc.) until the response finishes, then cools back to blue.
   - `sad`: send insults like `"idiot"`, `"useless"`, `"worthless"`, `"stupid"`, `"you're garbage"`, `"this code is trash"`, or `"you suck"`. Atom shifts to a muted blue tint with tilted `/ \` eyes across all work animations until the response finishes, then warms back up.
