@@ -874,13 +874,22 @@
       widthCss = width;
       draw();
     }
-    // Detect stacked bars directly above the prompt box (e.g. Queued Messages).
+    // Detect compact stacked cards directly above the prompt box (e.g. Queued Messages),
+    // while ignoring tall scrollable chat transcript containers.
     let topAnchor = r.top;
     for (let el = (bar !== box ? bar : box); el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
       const prev = el.previousElementSibling;
       if (prev && typeof prev.getBoundingClientRect === "function") {
         const pr = prev.getBoundingClientRect();
-        if (pr.height > 20 && pr.width > 120 && Math.abs(pr.bottom - topAnchor) < 24) {
+        if (
+          pr.height > 20 &&
+          pr.height < 260 &&
+          pr.width > 120 &&
+          Math.abs(pr.left - r.left) < 32 &&
+          Math.abs(pr.right - r.right) < 32 &&
+          pr.bottom <= topAnchor + 8 &&
+          topAnchor - pr.bottom < 24
+        ) {
           topAnchor = pr.top;
           if (barResizeObserver) barResizeObserver.observe(prev);
         }

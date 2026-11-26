@@ -736,14 +736,25 @@ test("click plays dance one-shot even with one skin; Shift+click switches with m
 
 test("Alt+click switches mascot side (left/right) and persists in storage", async () => {
   const h = makeHarness({ skinNames: ["atom"] });
+  await h.window.__atom.__loadSkin("atom", fakeSkinPayload());
+  await h.advance(20);
+  const host = h.docEl.children.find((c) => c.id === "atom-mascot");
+  const rightX = parseInt(host.style.transform.match(/translate\((-?\d+)px/)[1], 10);
+
   assert.equal(h.window.__atom.state.align, "right");
   h.triggerHitClick({ altKey: true });
   assert.equal(h.window.__atom.state.align, "left");
+  assert.equal(h.window.localStorage.getItem("atom.align"), "left");
+  const leftX = parseInt(host.style.transform.match(/translate\((-?\d+)px/)[1], 10);
+  assert.equal(leftX, 120); // barRect.left (100) + INSET (20)
+  assert.ok(leftX < rightX);
+
   h.triggerHitClick({ altKey: true });
   assert.equal(h.window.__atom.state.align, "right");
+  assert.equal(h.window.localStorage.getItem("atom.align"), "right");
 });
 
-test("automatically hoists above stacked cards (e.g. Queued Messages)", async () => {
+test("automatically hoists above compact stacked cards (e.g. Queued Messages) but ignores tall chat panes", async () => {
   const h = makeHarness({ skinNames: ["atom"] });
   await h.window.__atom.__loadSkin("atom", fakeSkinPayload());
   await h.advance(20);
@@ -752,7 +763,18 @@ test("automatically hoists above stacked cards (e.g. Queued Messages)", async ()
   assert.ok(host.style.transform.includes("translate("));
   const normalY = parseInt(host.style.transform.match(/,\s*(\d+)px\)/)[1], 10);
 
-  // Add a stacked queued-messages card directly above the prompt box
+  // Tall chat transcript above the prompt box should NOT hoist Atom
+  const chatPane = h.createEl("div");
+  chatPane.getBoundingClientRect = () => ({ top: 50, bottom: 600, left: 100, right: 1000, width: 900, height: 550 });
+  chatPane.parentElement = h.pane;
+  chatPane.isConnected = true;
+  h.pane.children.unshift(chatPane);
+  h.triggerResize();
+  await h.advance(200);
+  assert.equal(parseInt(host.style.transform.match(/,\s*(\d+)px\)/)[1], 10), normalY);
+
+  // Compact queued-messages card directly above the prompt box SHOULD hoist Atom
+  h.pane.children.shift();
   const queueCard = h.createEl("div");
   queueCard.getBoundingClientRect = () => ({ top: 540, bottom: 600, left: 100, right: 1000, width: 900, height: 60 });
   queueCard.parentElement = h.pane;
