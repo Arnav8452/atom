@@ -48,6 +48,11 @@ function makeHarness({
       this._attrs = new Map();
       this._text = "";
     }
+    get previousElementSibling() {
+      if (!this.parentElement) return null;
+      const idx = this.parentElement.children.indexOf(this);
+      return idx > 0 ? this.parentElement.children[idx - 1] : null;
+    }
     get textContent() {
       if (this._text) return this._text;
       return this.children.map((c) => c.textContent).join(" ").trim();
@@ -348,7 +353,7 @@ function makeHarness({
       const host = docEl.children.find((c) => c.id === "atom-mascot");
       const hit = host?.shadow?.querySelector("#hit");
       const fns = hit?.listeners.get("click") || [];
-      for (const fn of fns) fn({ stopPropagation() {}, shiftKey: Boolean(opts.shiftKey) });
+      for (const fn of fns) fn({ stopPropagation() {}, shiftKey: Boolean(opts.shiftKey), altKey: Boolean(opts.altKey) });
       return hit;
     },
     advance,
@@ -727,6 +732,61 @@ test("click plays dance one-shot even with one skin; Shift+click switches with m
   assert.equal(h2.window.__atom.state.playing, "dance");
   h2.triggerHitClick({ shiftKey: true });
   assert.equal(h2.window.__atom.state.skin, "alt");
+});
+
+test("Alt+click switches mascot side (left/right) and persists in storage", async () => {
+  const h = makeHarness({ skinNames: ["atom"] });
+  await h.window.__atom.__loadSkin("atom", fakeSkinPayload());
+  await h.advance(20);
+  const host = h.docEl.children.find((c) => c.id === "atom-mascot");
+  const rightX = parseInt(host.style.transform.match(/translate\((-?\d+)px/)[1], 10);
+
+  assert.equal(h.window.__atom.state.align, "right");
+  h.triggerHitClick({ altKey: true });
+  assert.equal(h.window.__atom.state.align, "left");
+  assert.equal(h.window.localStorage.getItem("atom.align"), "left");
+  const leftX = parseInt(host.style.transform.match(/translate\((-?\d+)px/)[1], 10);
+  assert.equal(leftX, 120); // barRect.left (100) + INSET (20)
+  assert.ok(leftX < rightX);
+
+  h.triggerHitClick({ altKey: true });
+  assert.equal(h.window.__atom.state.align, "right");
+  assert.equal(h.window.localStorage.getItem("atom.align"), "right");
+});
+
+test("automatically hoists above compact stacked cards (e.g. Queued Messages) but ignores tall chat panes", async () => {
+  const h = makeHarness({ skinNames: ["atom"] });
+  await h.window.__atom.__loadSkin("atom", fakeSkinPayload());
+  await h.advance(20);
+
+  const host = h.docEl.children.find((c) => c.id === "atom-mascot");
+  assert.ok(host.style.transform.includes("translate("));
+  const normalY = parseInt(host.style.transform.match(/,\s*(\d+)px\)/)[1], 10);
+
+  // Tall chat transcript above the prompt box should NOT hoist Atom
+  const chatPane = h.createEl("div");
+  chatPane.getBoundingClientRect = () => ({ top: 50, bottom: 600, left: 100, right: 1000, width: 900, height: 550 });
+  chatPane.parentElement = h.pane;
+  chatPane.isConnected = true;
+  h.pane.children.unshift(chatPane);
+  h.triggerResize();
+  await h.advance(200);
+  assert.equal(parseInt(host.style.transform.match(/,\s*(\d+)px\)/)[1], 10), normalY);
+
+  // Compact queued-messages card directly above the prompt box SHOULD hoist Atom
+  h.pane.children.shift();
+  const queueCard = h.createEl("div");
+  queueCard.getBoundingClientRect = () => ({ top: 540, bottom: 600, left: 100, right: 1000, width: 900, height: 60 });
+  queueCard.parentElement = h.pane;
+  queueCard.isConnected = true;
+  h.pane.children.unshift(queueCard);
+
+  h.triggerResize();
+  await h.advance(200);
+
+  const hoistedY = parseInt(host.style.transform.match(/,\s*(\d+)px\)/)[1], 10);
+  assert.ok(hoistedY < normalY, `Expected hoisted Y (${hoistedY}) to be above normal Y (${normalY})`);
+  assert.equal(normalY - hoistedY, 60);
 });
 
 test("sustained angry base holds in 30f loop and exits cleanly via 6f outro on idle", async () => {
