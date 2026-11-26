@@ -44,6 +44,8 @@
   const skinNames = [...SKIN_NAMES].sort((a, b) => (a === "atom" ? -1 : b === "atom" ? 1 : a.localeCompare(b)));
   const savedSkin = readStorage("atom.skin");
   let skin = skinNames.includes(savedSkin) ? savedSkin : skinNames[0];
+  const savedAlign = readStorage("atom.align");
+  let align = savedAlign === "left" ? "left" : "right";
 
   const sheets = {};
   const recolouring = new Set();
@@ -320,12 +322,24 @@
     }
   };
 
+  const updateTitle = () => {
+    const skinInfo = skinNames.length >= 2 ? ` · ${skin || "atom"} skin` : "";
+    hit.title = `Atom${skinInfo} (click to dance, Alt+click to switch side${skinNames.length >= 2 ? ", Shift+click to switch skin" : ""})`;
+  };
+
   hit.addEventListener("click", (e) => {
     e.stopPropagation();
+    if (e.altKey) {
+      align = align === "left" ? "right" : "left";
+      writeStorage("atom.align", align);
+      updateTitle();
+      place();
+      return;
+    }
     if (e.shiftKey && skinNames.length >= 2) {
       skin = skinNames[(skinNames.indexOf(skin) + 1) % skinNames.length];
       writeStorage("atom.skin", skin);
-      hit.title = `Atom · ${skin} skin (click to dance, Shift+click to switch)`;
+      updateTitle();
       if (sheets[skin] && playing) {
         start(playing);
         paintVisible();
@@ -340,9 +354,7 @@
       window.__atom.react("dance");
     }
   });
-  hit.title = skinNames.length >= 2
-    ? `Atom · ${skin || "atom"} skin (click to dance, Shift+click to switch)`
-    : "Atom (click to dance)";
+  updateTitle();
 
   let base = "idle";
   let playing = null;
@@ -862,7 +874,7 @@
       widthCss = width;
       draw();
     }
-    const x = Math.round(r.right - INSET - width);
+    const x = align === "left" ? Math.round(r.left + INSET) : Math.round(r.right - INSET - width);
     const y = Math.max(0, Math.round(r.top - height * (1 - SINK)));
     const key = `${x},${y}`;
     if (key !== shownAt) {
@@ -1000,6 +1012,7 @@
     get state() {
       return {
         skin,
+        align,
         playing,
         phase: currentPhase(),
         loop: sheet ? loopRange(sheet) : null,

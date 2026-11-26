@@ -348,7 +348,7 @@ function makeHarness({
       const host = docEl.children.find((c) => c.id === "atom-mascot");
       const hit = host?.shadow?.querySelector("#hit");
       const fns = hit?.listeners.get("click") || [];
-      for (const fn of fns) fn({ stopPropagation() {}, shiftKey: Boolean(opts.shiftKey) });
+      for (const fn of fns) fn({ stopPropagation() {}, shiftKey: Boolean(opts.shiftKey), altKey: Boolean(opts.altKey) });
       return hit;
     },
     advance,
@@ -727,6 +727,15 @@ test("click plays dance one-shot even with one skin; Shift+click switches with m
   assert.equal(h2.window.__atom.state.playing, "dance");
   h2.triggerHitClick({ shiftKey: true });
   assert.equal(h2.window.__atom.state.skin, "alt");
+});
+
+test("Alt+click switches mascot side (left/right) and persists in storage", async () => {
+  const h = makeHarness({ skinNames: ["atom"] });
+  assert.equal(h.window.__atom.state.align, "right");
+  h.triggerHitClick({ altKey: true });
+  assert.equal(h.window.__atom.state.align, "left");
+  h.triggerHitClick({ altKey: true });
+  assert.equal(h.window.__atom.state.align, "right");
 });
 
 test("sustained angry base holds in 30f loop and exits cleanly via 6f outro on idle", async () => {
