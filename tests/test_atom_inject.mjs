@@ -48,6 +48,11 @@ function makeHarness({
       this._attrs = new Map();
       this._text = "";
     }
+    get previousElementSibling() {
+      if (!this.parentElement) return null;
+      const idx = this.parentElement.children.indexOf(this);
+      return idx > 0 ? this.parentElement.children[idx - 1] : null;
+    }
     get textContent() {
       if (this._text) return this._text;
       return this.children.map((c) => c.textContent).join(" ").trim();
@@ -736,6 +741,30 @@ test("Alt+click switches mascot side (left/right) and persists in storage", asyn
   assert.equal(h.window.__atom.state.align, "left");
   h.triggerHitClick({ altKey: true });
   assert.equal(h.window.__atom.state.align, "right");
+});
+
+test("automatically hoists above stacked cards (e.g. Queued Messages)", async () => {
+  const h = makeHarness({ skinNames: ["atom"] });
+  await h.window.__atom.__loadSkin("atom", fakeSkinPayload());
+  await h.advance(20);
+
+  const host = h.docEl.children.find((c) => c.id === "atom-mascot");
+  assert.ok(host.style.transform.includes("translate("));
+  const normalY = parseInt(host.style.transform.match(/,\s*(\d+)px\)/)[1], 10);
+
+  // Add a stacked queued-messages card directly above the prompt box
+  const queueCard = h.createEl("div");
+  queueCard.getBoundingClientRect = () => ({ top: 540, bottom: 600, left: 100, right: 1000, width: 900, height: 60 });
+  queueCard.parentElement = h.pane;
+  queueCard.isConnected = true;
+  h.pane.children.unshift(queueCard);
+
+  h.triggerResize();
+  await h.advance(200);
+
+  const hoistedY = parseInt(host.style.transform.match(/,\s*(\d+)px\)/)[1], 10);
+  assert.ok(hoistedY < normalY, `Expected hoisted Y (${hoistedY}) to be above normal Y (${normalY})`);
+  assert.equal(normalY - hoistedY, 60);
 });
 
 test("sustained angry base holds in 30f loop and exits cleanly via 6f outro on idle", async () => {

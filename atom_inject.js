@@ -874,8 +874,21 @@
       widthCss = width;
       draw();
     }
+    // Detect stacked bars directly above the prompt box (e.g. Queued Messages).
+    let topAnchor = r.top;
+    for (let el = (bar !== box ? bar : box); el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+      const prev = el.previousElementSibling;
+      if (prev && typeof prev.getBoundingClientRect === "function") {
+        const pr = prev.getBoundingClientRect();
+        if (pr.height > 20 && pr.width > 120 && Math.abs(pr.bottom - topAnchor) < 24) {
+          topAnchor = pr.top;
+          if (barResizeObserver) barResizeObserver.observe(prev);
+        }
+      }
+      if (el === box.parentElement) break;
+    }
     const x = align === "left" ? Math.round(r.left + INSET) : Math.round(r.right - INSET - width);
-    const y = Math.max(0, Math.round(r.top - height * (1 - SINK)));
+    const y = Math.max(0, Math.round(topAnchor - height * (1 - SINK)));
     const key = `${x},${y}`;
     if (key !== shownAt) {
       host.style.transform = `translate(${x}px, ${y}px)`;
