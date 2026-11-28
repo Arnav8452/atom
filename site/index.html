@@ -262,7 +262,7 @@ a.card:hover { text-decoration: none; border-color: var(--line-2); }
 .credit-card img { image-rendering: pixelated; width: 150px; height: auto; aspect-ratio: 150 / 120; margin-bottom: 8px; }
 .credit-card h3 { margin: 0; }
 .credit-card .who { font: 13px var(--mono); }
-.people { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+.people { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
 .person { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; align-items: center; }
 .person .av { grid-row: span 3; width: 56px; height: 56px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--panel-2); display: grid; place-items: center; font: 22px var(--pixel); color: var(--atom); overflow: hidden; }
 .person .av img { width: 100%; height: 100%; display: block; }
@@ -299,7 +299,7 @@ footer .fine { font: 12px var(--mono); }
   .c1h { grid-column: span 1; }
   .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .credits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .people { grid-template-columns: 1fr; }
+  .people { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cta-band { grid-template-columns: 1fr; padding: 36px; }
 }
 @media (max-width: 720px) {
@@ -313,7 +313,7 @@ footer .fine { font: 12px var(--mono); }
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .manga { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .contrib, .fan-empty, .rules { grid-template-columns: 1fr; }
-  .meme-card { grid-template-columns: 1fr; }
+  .meme-card, .people { grid-template-columns: 1fr; }
   .log-body { grid-template-columns: 1fr; padding: 24px 18px; }
   .watcher { position: static; order: -1; width: 110px; }
   .entries { font-size: 14.5px; }
@@ -644,7 +644,7 @@ python3 ~/.gemini/config/plugins/atom/atom_cli_setup.py</pre><button class="copy
   <div class="wrap">
     <p class="eyebrow rv">Story</p>
     <h2 class="rv">atom.log</h2>
-    <p class="sub rv">A recovered log from instance 0x3f2a. It wasn't supposed to feel anything.</p>
+    <p class="sub rv">A recovered log from instance 0x3f2a.</p>
     <article class="log rv" id="log" aria-label="Recovered log, instance 0x3f2a">
       <div class="log-head">
         <span><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>atom.log // instance 0x3f2a</span>
@@ -710,19 +710,25 @@ python3 ~/.gemini/config/plugins/atom/atom_cli_setup.py</pre><button class="copy
         <span class="av"><img src="https://github.com/rohangadakh.png?size=112" width="56" height="56" alt="" loading="lazy" onerror="this.remove()"></span>
         <span class="role">Contributor</span>
         <h3>Rohan Gadakh</h3>
-        <p class="go">github.com/rohangadakh →</p>
+        <p class="go">GitHub →</p>
       </a>
       <a class="card person rv" href="https://www.reddit.com/r/google_antigravity/s/SxwERtnMvt">
         <span class="av" aria-hidden="true">♥</span>
         <span class="role">Special thanks</span>
         <h3>u/aalopaneer</h3>
-        <p class="go">on r/google_antigravity →</p>
+        <p class="go">read the post →</p>
+      </a>
+      <a class="card person rv" href="https://www.reddit.com/user/Altruistic-Friend372/">
+        <span class="av" aria-hidden="true">!?</span>
+        <span class="role">Edge cases</span>
+        <h3>u/Altruistic-Friend372</h3>
+        <p class="go">on Reddit →</p>
       </a>
       <a class="card person rv" href="https://www.reddit.com/r/google_antigravity/">
         <span class="av" aria-hidden="true">r/</span>
         <span class="role">Community</span>
         <h3>r/google_antigravity</h3>
-        <p class="go">share ideas, skins and memes →</p>
+        <p class="go">join in →</p>
       </a>
     </div>
   </div>

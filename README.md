@@ -332,6 +332,8 @@ ideas, art, memes and testing all come from there.
 
 **Contributors:** [Rohan Gadakh](https://github.com/rohangadakh)
 
+**Edge cases:** [u/Altruistic-Friend372](https://www.reddit.com/user/Altruistic-Friend372/)
+
 **Special thanks:** [u/aalopaneer](https://www.reddit.com/r/google_antigravity/s/SxwERtnMvt)
 
 ## Contributing & Community
