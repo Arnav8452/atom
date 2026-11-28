@@ -55,7 +55,7 @@
 Want Antigravity to set it up for you? Copy this prompt and paste it into chat:
 
 ```text
-Install https://github.com/Arnav8452/atom for my OS, verify hooks.json, and tell me when to restart Antigravity.
+Install https://github.com/Arnav8452/atom for my OS and verify setup.
 ```
 
 > [!TIP]
