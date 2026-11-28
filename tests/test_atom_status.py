@@ -459,6 +459,7 @@ class SetupTests(unittest.TestCase):
         self.assertIn("atom_status.py", block["command"])
         self.assertIn("-S -I", block["command"])
 
+    @unittest.skipIf(os.name == "nt", "atom-toggle is a POSIX shell command; Windows uses atom_status.py --toggle")
     def test_install_writes_toggle_and_uninstall_removes_it(self) -> None:
         toggle = os.path.join(self.bin, "atom-toggle")
         self.assertEqual(self.setup(), 0)
@@ -555,9 +556,9 @@ class SetupTests(unittest.TestCase):
         cmd = atom_cli_setup.build_command("python3", windows=True)
         self.assertRegex(cmd, r'^python3 -S -I ".*atom_status\.py"$')
         cmd = atom_cli_setup.build_command("python3", "line", "256", windows=False)
-        self.assertTrue(cmd.endswith("atom_status.py --style line --color 256"))
+        self.assertRegex(cmd, r"atom_status\.py'? --style line --color 256$")  # quoted when the path has backslashes
         cmd = atom_cli_setup.build_command("python3", skin="chibi", windows=False)
-        self.assertTrue(cmd.endswith("atom_status.py --skin chibi"))
+        self.assertRegex(cmd, r"atom_status\.py'? --skin chibi$")
         self.assertNotIn("--skin", atom_cli_setup.build_command("python3", windows=False))
 
     def test_setup_knows_every_skin(self) -> None:

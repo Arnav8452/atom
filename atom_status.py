@@ -780,7 +780,17 @@ def demo(opts: dict) -> str:
     return "\n\n".join(blocks)
 
 
+def _utf8_stdout() -> None:
+    """Always print UTF-8. On Windows a piped stdout otherwise uses the ANSI code
+    page, which can't encode the pixel blocks, and the status line would crash."""
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    except Exception:
+        pass
+
+
 def main(argv: list[str] | None = None) -> None:
+    _utf8_stdout()
     opts = _parse_args(sys.argv[1:] if argv is None else argv)
     if opts["toggle"] or opts["view"]:
         # Run by you (e.g. `! atom-toggle` inside agy), not by the CLI.
