@@ -43,18 +43,33 @@ GIF_MAX_BYTES = 2_500_000  # animated art larger than this is skipped
 DEFAULT_SKIN = {"name": "Atom", "tagline": "The classic box Atom with a rainbow crown", "accent": "#3aa2f6", "order": 0}
 
 
+def _has_sheets(d: Path) -> bool:
+    return any((d / f"{f.stem}.json").is_file() for f in d.glob("*.webp"))
+
+
 def skin_dirs(assets: Path) -> list[tuple[str, dict, Path]]:
+    """Every skin, plus one entry per outfit for skins with variants/ (e.g. v2-wardrobe)."""
     out = []
     for d in sorted(p for p in assets.iterdir() if p.is_dir()):
-        states = sorted(f.stem for f in d.glob("*.webp") if (d / f"{f.stem}.json").is_file())
-        if not states:
+        if not _has_sheets(d):
             continue
         meta = dict(DEFAULT_SKIN) if d.name == "atom" else {"name": d.name, "tagline": "", "accent": "#3aa2f6", "order": 50}
         try:
             meta.update(json.loads((d / "skin.json").read_text(encoding="utf-8")))
         except (OSError, ValueError):
             pass
-        out.append((d.name, meta, d))
+        variants = [v for v in meta.get("variants", []) if isinstance(v, str)]
+        default = meta.get("defaultVariant")
+        if not variants or not default:
+            out.append((d.name, meta, d))
+            continue
+        for i, v in enumerate(variants):
+            vdir = d if v == default else d / "variants" / v
+            if not _has_sheets(vdir):
+                continue
+            vmeta = {**meta, "name": v.capitalize(), "order": meta.get("order", 50) + i / 100,
+                     "tagline": f"{meta.get('name', d.name)}: {v.capitalize()}" + (f" · {meta['tagline']}" if meta.get("tagline") else "")}
+            out.append((f"{d.name}-{v}", vmeta, vdir))
     out.sort(key=lambda t: (t[1].get("order", 50), t[0]))
     return out
 
