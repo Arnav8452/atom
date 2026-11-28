@@ -12,6 +12,10 @@ A tiny open-source pixel companion that stands on the prompt bar inside the
 — reasoning, editing code, running commands, exploring files, delegating
 subagents, sleeping on quota limits, or reacting to your tone.
 
+**New: Atom for Antigravity CLI.** Atom also lives in `agy`'s status line, as a
+one-line bar or a big pixel Atom V2 that you switch between with `atom-toggle`.
+See [Atom for Antigravity CLI](#atom-for-antigravity-cli) and the full guide in [CLI.md](CLI.md).
+
 - **19 code-generated animated states:** every state (`idle`, `thinking`,
   `typing`, `working`, `exploring`, `running`, `delegating`, `asking`,
   `listening`, `watching`, `closed`, `dance`, `done`, `happy`, `sad`, `angry`,
@@ -49,6 +53,9 @@ atom_launch.py ──starts──▶ Antigravity app                ▼
   `PreInvocation`, `PreToolUse`, `PostToolUse`, `PostInvocation`, `Stop`),
   writes per-conversation state/mood/limit JSON, and wakes the launcher
   immediately via `notify.sock` (Linux/macOS) or loopback UDP `notify.port` (Windows).
+- **In the CLI:** `agy` runs `atom_status.py` as its custom status line with the session
+  state on stdin. It combines that with the same hook files and prints the bar or the
+  big Atom. See [CLI.md](CLI.md#how-it-works).
 - **In-app rendering:** `atom_launch.py` launches Antigravity with
   `--remote-debugging-pipe` on Linux/macOS (or loopback `--remote-debugging-port`
   over a stdlib WebSocket client on Windows), injects the lightweight (<35 KB)
@@ -71,6 +78,8 @@ If you are an AI coding agent installing Atom into a user's Antigravity setup, p
 
 **Environment overrides:** `ATOM_REPO` (custom git remote), `ATOM_DIR` (install checkout path), `ATOM_HOME` (runtime state dir, default `~/.antigravity-atom`), `ANTIGRAVITY_BIN` (custom Antigravity executable; on Linux the launcher otherwise checks the usual install paths, `PATH`, other `antigravity*.desktop` launchers, and `Antigravity*/` folders extracted into `/opt`, `~/.local/share`, `~/Applications`, `~/Apps`, `~/Downloads`, `~` and similar), `ANTIGRAVITY_PLUGINS_DIR` (custom plugins dir).
 **Post-install check:** confirm `hooks.json` exists inside the plugin path above, then quit Antigravity completely and launch via the newly installed entry (or `python3 atom_launch.py`). See [`AGENTS.md`](AGENTS.md) for full contributor & automation details.
+
+**Antigravity CLI (`agy`) users:** run `agy plugin install https://github.com/Arnav8452/atom`, then `python3 ~/.gemini/config/plugins/atom/atom_cli_setup.py`, and restart `agy`. If desktop Atom is already installed, only the second command is needed. See [CLI.md](CLI.md).
 
 ---
 
@@ -143,9 +152,72 @@ Ready-to-use manifests live under [`packaging/`](packaging):
 - **Uninstall (Windows):** `.\install.ps1 -Uninstall`
 - Quit Antigravity completely and reopen it through the installed launcher/shortcut to meet Atom. (If Antigravity is already running, launching again forwards arguments to the existing single instance.)
 
-### Antigravity CLI (`agy`)
+## Atom for Antigravity CLI
 
-Atom also works in Antigravity CLI as a custom status line, using only the CLI's documented hooks and `statusLine` setting: `python3 atom_cli_setup.py`. See [CLI.md](CLI.md).
+Atom also runs in **Antigravity CLI (`agy`)**, in the status line right under the prompt.
+It reacts to the same things as on the desktop (thinking, writing code, running commands,
+waiting for your approval, done, errors, moods and quota sleep) and comes in two views:
+
+**Bar** (default): `agy`'s own `auto · model · effort` info, with a small Atom face pinned to the end of the line.
+
+![Atom as a one-line status bar in Antigravity CLI](assets/screenshots/cli-bar.png)
+
+**Big**: the same line with the pixel Atom V2 underneath.
+
+![Switching to the big pixel Atom with atom-toggle](assets/screenshots/cli-big.png)
+
+### Install
+
+Pick one. Each needs only Python 3 and `agy`:
+
+```bash
+# 1. Straight from GitHub (recommended)
+agy plugin install https://github.com/Arnav8452/atom
+python3 ~/.gemini/config/plugins/atom/atom_cli_setup.py
+
+# 2. From a git clone
+git clone https://github.com/Arnav8452/atom.git
+agy plugin install ./atom
+python3 atom/atom_cli_setup.py
+
+# 3. Desktop Atom already installed: the CLI shares its plugin
+python3 ~/.gemini/config/plugins/atom/atom_cli_setup.py
+```
+
+### Activate
+
+`atom_cli_setup.py` adds Atom as `agy`'s custom status line in
+`~/.gemini/antigravity-cli/settings.json` (nothing else in the file changes, and it won't
+replace a status line you already have without `--force`). It also installs the
+`atom-toggle` command in `~/.local/bin`. **Quit `agy` and start it again** to meet Atom.
+
+### Switch between the bar and the big Atom
+
+Inside `agy`, type **`!`** on its own (the prompt turns into a blue `!`, which is `agy`'s shell
+mode), then **`atom-toggle`** and Enter. Atom switches straight away. No model is involved
+and no quota is used. Atom remembers the view you picked across restarts.
+
+### Skins and options
+
+Re-run setup with any of these:
+
+| Option | |
+|---|---|
+| `--skin v2` (default) · `atom` · `chibi` · `base-qt` | terminal versions of the desktop skins |
+| `--style switch` (default) · `bar` · `big` · `sprite` | switchable / always bar / always big / big Atom under `agy`'s normal line |
+| `--color 256` · `none` | for terminals without 24-bit colour / no colour |
+
+Preview everything without `agy`: `python3 atom_status.py --demo --skin all`.
+
+### Update & uninstall
+
+- **Update:** run the same install commands again (or `git pull` in your clone first). Re-running setup is safe.
+- **Turn off:** `python3 <atom>/atom_cli_setup.py --uninstall` removes the status line and `atom-toggle`. Add `agy plugin uninstall atom` to remove the hooks if you don't use desktop Atom. To hide Atom temporarily, use `/statusline disable` in `agy`.
+
+The CLI version only uses features Antigravity documents for this (plugin hooks, the custom
+status line, and `agy`'s `!` shell mode). It never wraps or injects into `agy`, and never
+stores or prints your email, paths or prompts. Full guide, troubleshooting and details:
+**[CLI.md](CLI.md)**.
 
 ## States (19 code-generated states)
 
@@ -234,6 +306,7 @@ y≈222, so every state lines up. If a haze shows around the sprite, raise
 - **Zero network / telemetry:** Atom never opens outbound sockets or sends data off your machine.
 - **Localhost-only injection:** `atom_launch.py` attaches only to `http(s)://127.0.0.1:<port>/` or `http(s)://localhost:<port>/` targets and uses DevTools pipes (no TCP port) on Linux/macOS or loopback-only WebSocket on Windows.
 - **User-private state & sockets:** runtime state files and UNIX wakeup sockets in `~/.antigravity-atom` use owner-only permissions (`0700` dirs, `0600` socket on POSIX) and never persist raw user prompts.
+- **CLI status line:** `atom_status.py` reads the CLI's status line JSON but never stores or prints its `email`, conversation title, paths or prompts; it writes only the current view and reaction under `~/.antigravity-atom/cli`.
 - **Isolated hooks:** `atom_hook.py` runs under `python3 -S -I` with empty stdout on `PreToolUse` so Antigravity's own permission controls remain untouched.
 - See [SECURITY.md](SECURITY.md) for reporting vulnerabilities privately via GitHub Security Advisories.
 
@@ -259,6 +332,10 @@ plugin.json, hooks.json         Antigravity plugin manifest & lifecycle hooks
 atom_hook.py                    hook -> state/mood/limit files (stdlib, ~20 ms per event)
 atom_launch.py                  cross-platform launcher & CDP injector (Linux/macOS/Windows)
 atom_inject.js                  in-app mascot renderer, 60fps crossfades, mood & limit sync
+atom_status.py                  Antigravity CLI status line: bar & big Atom, skins (stdlib)
+atom_cli_setup.py               turns the CLI status line + atom-toggle on/off (stdlib)
+CLI.md                          Atom for Antigravity CLI guide
+assets/screenshots/             README & website screenshots
 assets/atom/                    19 lossless WebP sprite sheets + frame/loop JSON metadata
 assets/moodboard.{gif,webp}     animated 16:9 showcase card
 tools/render_all.py             code-generated renderer for all 19 states

@@ -153,6 +153,13 @@ section.s > .wrap > p.lede { margin: 0 0 24px; color: var(--dim); max-width: 62c
 .note b { color: var(--fg); font-weight: 500; }
 code.i { font: 13px var(--mono); color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
 
+.shots { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; margin: 0 0 28px; }
+.shots figure { margin: 0; display: grid; gap: 8px; min-width: 0; }
+.shots img { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 10px; background: #021526; }
+.shots figcaption { font-size: 14px; color: var(--dim); }
+.shots figcaption b { color: var(--fg); font-weight: 500; }
+kbd { font: 12.5px var(--mono); color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; }
+
 .contrib { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .card { border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 8px; align-content: start; min-width: 0; text-decoration: none; color: inherit; background: var(--panel); }
 a.card:hover { border-color: var(--faint); }
@@ -191,6 +198,7 @@ footer a { color: var(--dim); }
     <div class="path">~/.antigravity-atom/<b>atom.log</b></div>
     <nav aria-label="Page">
       <a href="#install">install</a>
+      <a href="#cli">cli</a>
       <a href="#contribute">contribute</a>
       <a href="https://github.com/Arnav8452/atom">github</a>
     </nav>
@@ -227,13 +235,14 @@ footer a { color: var(--dim); }
     <div class="who">
       <div class="stamp">instance 0x3f2b // log 01 // all definitions stored.</div>
       <h1 id="atom-name"><span>atom</span></h1>
-      <p>A tiny pixel companion that stands on the prompt bar in the Antigravity desktop app and reacts to what your agent is doing: reasoning, editing code, running commands, exploring files, or sleeping off a quota limit.</p>
+      <p>A tiny pixel companion that stands on the prompt bar in the Antigravity desktop app and reacts to what your agent is doing: reasoning, editing code, running commands, exploring files, or sleeping off a quota limit. It also lives in the status line of Antigravity CLI.</p>
       <div class="cta">
         <a class="btn star" href="https://github.com/Arnav8452/atom">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>
           Star on GitHub<span id="stars" hidden></span>
         </a>
         <a class="btn" href="#install">Install Atom</a>
+        <a class="btn" href="#cli">Atom for the CLI</a>
       </div>
     </div>
   </section>
@@ -337,6 +346,54 @@ footer a { color: var(--dim); }
     </div>
 
     <p class="note"><b>Already running Antigravity?</b> Quit it completely first. Opening it again only forwards to the running window, and Atom won't attach.</p>
+    <p class="note"><b>Using Antigravity CLI?</b> See <a href="#cli">Atom in your terminal</a>. It's a separate, two-command setup.</p>
+  </div>
+</section>
+
+<!-- ===== cli ===== -->
+<section class="s" id="cli">
+  <div class="wrap">
+    <h2>Atom in your terminal</h2>
+    <p class="lede">Atom also runs in Antigravity CLI (<code class="i">agy</code>). It sits in the status line right under the prompt and reacts to the same things: thinking, writing code, running commands, waiting for your OK, done, errors, moods and quota sleep.</p>
+
+    <div class="shots">
+      <figure>
+        <img src="cli/cli-bar.png" width="882" height="112" loading="lazy" alt="Antigravity CLI status line reading 'auto · Gemini 4 Neon · high', with 'done!' and a small blue Atom face with happy ^ ^ eyes at the right end">
+        <figcaption><b>Bar</b> (default): the CLI's own info, with a small Atom face pinned to the end of the line. No extra space.</figcaption>
+      </figure>
+      <figure>
+        <img src="cli/cli-big.png" width="882" height="318" loading="lazy" alt="After running atom-toggle in shell mode the CLI prints 'Atom: big view', and the status line shows a pixel-art Atom V2 with a rainbow beanie, happy eyes and blush, next to 'Atom · done!'">
+        <figcaption><b>Big</b>: the pixel Atom V2 under the same line. Switch whenever you like.</figcaption>
+      </figure>
+    </div>
+
+    <div class="panel">
+      <div class="step">
+        <h4>1. Install</h4>
+        <div class="code"><pre>agy plugin install https://github.com/Arnav8452/atom
+python3 ~/.gemini/config/plugins/atom/atom_cli_setup.py</pre><button class="copy" type="button">copy</button></div>
+        <p>Already have desktop Atom? The CLI shares its plugin, so only the second line is needed. From a clone: <code class="i">agy plugin install ./atom</code>, then <code class="i">python3 atom/atom_cli_setup.py</code>.</p>
+      </div>
+      <div class="step">
+        <h4>2. Activate</h4>
+        <p>Setup adds Atom as <code class="i">agy</code>'s custom status line. Nothing else in your settings changes, and it won't replace a status line you already have. It also installs the <code class="i">atom-toggle</code> command. Quit <code class="i">agy</code> and start it again to meet Atom.</p>
+      </div>
+      <div class="step">
+        <h4>3. Switch between the bar and the big Atom</h4>
+        <p>In the empty prompt, type <kbd>!</kbd> on its own. The prompt turns into a blue <code class="i">!</code>, which is <code class="i">agy</code>'s shell mode. Then type <code class="i">atom-toggle</code> and press <kbd>Enter</kbd>. Atom switches straight away. No model is involved, and Atom remembers your choice.</p>
+      </div>
+      <div class="step">
+        <h4>Skins and options</h4>
+        <p>Atom V2 is the default. Re-run setup with <code class="i">--skin atom</code>, <code class="i">chibi</code> or <code class="i">base-qt</code>, with <code class="i">--style sprite</code> to keep the CLI's own status line, or with <code class="i">--color 256</code> for older terminals. Preview them all with <code class="i">python3 atom_status.py --demo --skin all</code>.</p>
+      </div>
+      <div class="step">
+        <h4>Turn off</h4>
+        <div class="code"><pre>python3 ~/.gemini/config/plugins/atom/atom_cli_setup.py --uninstall
+agy plugin uninstall atom   <span class="c"># only if you don't use desktop Atom</span></pre><button class="copy" type="button">copy</button></div>
+      </div>
+    </div>
+
+    <p class="note"><b>Uses only what the CLI documents.</b> Plugin hooks, the custom status line, and <code class="i">agy</code>'s own <code class="i">!</code> shell mode. Atom never wraps or injects into <code class="i">agy</code>, and never stores your email, paths or prompts. Full guide: <a href="https://github.com/Arnav8452/atom/blob/main/CLI.md">CLI.md</a>.</p>
   </div>
 </section>
 

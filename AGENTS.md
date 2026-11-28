@@ -7,13 +7,14 @@ This repository ships **Atom**, an open-source, stdlib-only prompt-bar mascot fo
 - **Linux / macOS:** `curl -fsSL https://raw.githubusercontent.com/Arnav8452/atom/main/install.sh | bash`
 - **Windows (PowerShell):** `irm https://raw.githubusercontent.com/Arnav8452/atom/main/install.ps1 | iex`
 - **Verify installation:** check `~/.gemini/config/plugins/atom/hooks.json` (Windows: `%USERPROFILE%\.gemini\config\plugins\atom\hooks.json`) and run `python3 -m unittest discover -s tests -v`.
+- **Antigravity CLI (`agy`):** `agy plugin install https://github.com/Arnav8452/atom`, then `python3 ~/.gemini/config/plugins/atom/atom_cli_setup.py`, then restart `agy`. If desktop Atom is installed, only the second command is needed. Switching views: the user types `!` alone (shell mode), then `atom-toggle`. See `CLI.md`.
 - **Activate:** quit Antigravity completely and reopen it via the installed launcher (`antigravity.desktop`, `~/Applications/Antigravity (Atom).app`, Start Menu/Desktop shortcut, or `python3 atom_launch.py`).
 
 ## Architecture
 
 - `atom_hook.py`: Synchronous hook command triggered by `hooks.json` via `python3 -S -I ./atom_hook.py` on `SessionStart`, `PreInvocation`, `PreToolUse`, `PostToolUse`, `PostInvocation`, and `Stop`. Writes state/mood/limit files under `~/.antigravity-atom` (or `$ATOM_HOME`) and wakes the launcher over `notify.sock` / loopback UDP `notify.port`.
 - `atom_launch.py`: Launches Antigravity with `--remote-debugging-pipe` (POSIX inherited file descriptors) or loopback `--remote-debugging-port` (Windows stdlib `WsCdp`), injects the compact bootstrap script (`atom_inject.js`), and lazily pushes per-state WebP sheets via `window.__atom.__loadState`.
-- `atom_status.py` (Antigravity CLI): the CLI's documented custom `statusLine` command. Reads the status line JSON on stdin plus the hook's state files and prints a half-block pixel Atom (or one line). Must stay stdlib-only, `-S -I` safe, always exit `0` with output, and never store or print the payload's `email`, title, paths or prompts. See `CLI.md`.
+- `atom_status.py` (Antigravity CLI): the CLI's documented custom `statusLine` command. Reads the status line JSON on stdin plus the hook's state files and prints the one-line bar (default, replacing the CLI's line and redrawing its mode/model info) or the big half-block pixel Atom, switched with `atom-toggle` (`--toggle`, state in `cli/view.json`). Skins mirror `assets/<id>` (V2 default). Must stay stdlib-only, `-S -I` safe, always exit `0` with output, and never store or print the payload's `email`, title, paths or prompts. See `CLI.md`.
 - `atom_cli_setup.py` (Antigravity CLI): adds/removes Atom's `statusLine` block in `~/.gemini/antigravity-cli/settings.json`. It never overwrites a user's own status line without `--force` and never rewrites a settings file it can't parse. The CLI version must only use documented extension points (hooks, status line), and never wrap, launch or inject into `agy`.
 - `atom_inject.js`: Shadow DOM `<canvas>` renderer mounted only on localhost pages containing `[data-testid="agent-input-box"]`, handling 60fps crossfades, mood tint/eye tilt, and per-model quota sleep/wake-up.
 
