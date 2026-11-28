@@ -788,7 +788,7 @@ def main(argv: list[str] | None = None) -> None:
             view = set_view(opts["view"])
         else:
             view = set_view("big" if read_view() == "bar" else "bar")
-        sys.stdout.write(f"Atom: {view} view. It shows the next time agy redraws its status line.\n")
+        sys.stdout.write(f"Atom: {view} view\n")
         return
     if opts["demo"]:
         sys.stdout.write(demo(opts) + "\n")

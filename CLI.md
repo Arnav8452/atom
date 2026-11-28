@@ -3,8 +3,8 @@
 Atom can live in [Antigravity CLI](https://antigravity.google/docs/cli/statusline/) (`agy`) as a
 custom status line. By default Atom shares the CLI's status line: the CLI's mode and
 model info on the left, a small Atom face at the end of the line that reacts to what the
-agent is doing. No extra lines are used. Type `! atom-toggle` in the CLI to switch to the
-big pixel Atom and back.
+agent is doing. No extra lines are used. Run `atom-toggle` in the CLI's `!` shell mode to
+switch to the big pixel Atom and back. It starts as the bar and stays as you last set it.
 
 ```
 bar:  auto · Gemini 4 Neon · high                          thinking… ▐▀ ▀▌
@@ -58,15 +58,16 @@ never stores the status line's `email`, title, paths or prompts. (The desktop ov
 
 ## Switching between the bar and the big Atom
 
-Inside `agy`, type:
+Inside `agy`:
 
-```
-! atom-toggle
-```
+1. Type `!` on its own in the empty prompt. The `>` turns into a blue `!`, which means shell mode is on.
+2. Type `atom-toggle` and press Enter.
 
-`!` runs the command on your machine without involving the model, so it uses no quota.
-The new view appears the next time `agy` redraws its status line, which happens when the
-agent state changes. (A status line can't receive mouse clicks, so it can't toggle on click.)
+Atom switches straight away. Shell mode runs the command on your machine without the
+model, so it uses no quota. Pasting or sending `! atom-toggle` as one line doesn't switch
+modes; it goes to the model as a normal prompt. (A status line can't receive mouse
+clicks, so it can't toggle on click.) The view is remembered: Atom starts as the bar and
+stays in whichever view you last picked, across restarts.
 `atom_status.py --view big` or `--view bar` sets a view directly.
 
 Turn it off with `python3 atom_cli_setup.py --uninstall`, or in the CLI with

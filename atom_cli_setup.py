@@ -236,11 +236,17 @@ def install(
     if bin_dir:
         toggle = install_toggle(bin_dir, python)
         if toggle and _on_path(bin_dir):
-            print(f"\nSwitch between the bar and the big Atom inside agy with:  ! {TOGGLE_NAME}")
+            print(
+                "\nSwitch between the bar and the big Atom inside agy: type ! on its own (the\n"
+                f"prompt turns into a blue !), then {TOGGLE_NAME} and Enter."
+            )
         else:
             if toggle:
                 print(f"\n(wrote {toggle}, but {bin_dir} isn't on your PATH)")
-            print(f"\nSwitch between the bar and the big Atom inside agy with:\n  ! {toggle_command(python)}")
+            print(
+                "\nSwitch between the bar and the big Atom inside agy: type ! on its own (the\n"
+                f"prompt turns into a blue !), then:\n  {toggle_command(python)}"
+            )
     print("\nRestart agy (or run /statusline enable) to see Atom.")
     return 0
 
