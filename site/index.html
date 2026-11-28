@@ -1035,12 +1035,6 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
     done: "turn finished", happy: "you said thanks", sad: "you were hurtful", angry: "you swore at the agent",
     error: "something failed", canceled: "you stopped the turn", tired: "hit the step limit"
   };
-  var CREDITS = {
-    "v2": ["u/AaverageRed", "https://www.reddit.com/user/AaverageRed/"],
-    "base-qt": ["u/Mental-Armadillo3320", "https://www.reddit.com/user/Mental-Armadillo3320/"],
-    "chibi": ["u/whimsicalgods", "https://www.reddit.com/user/whimsicalgods/"],
-    "v2-wardrobe": ["u/XXYZZYXZYX", "https://www.reddit.com/user/XXYZZYXZYX/"]
-  };
   var tabsEl = document.getElementById("gal-tabs"), grid = document.getElementById("gal-states");
   var tagEl = document.getElementById("gal-tagline"), countEl = document.getElementById("gal-count");
 
@@ -1049,11 +1043,6 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
   function showSkin(skin, tabs) {
     tabs.forEach(function (t) { var on = t.dataset.id === skin.id; t.setAttribute("aria-selected", on ? "true" : "false"); t.tabIndex = on ? 0 : -1; });
     tagEl.textContent = skin.tagline || "";
-    var credit = CREDITS[skin.id] || CREDITS[skin.id.split("-").slice(0, 2).join("-")];
-    if (credit) {
-      tagEl.appendChild(document.createTextNode((skin.tagline ? " · " : "") + "designed by "));
-      var who = el("a", "", credit[0]); who.href = credit[1]; tagEl.appendChild(who);
-    }
     grid.textContent = "";
     var states = skin.states.slice().sort(function (a, b) {
       var i = ORDER.indexOf(a), j = ORDER.indexOf(b); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j);
