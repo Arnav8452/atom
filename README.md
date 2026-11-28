@@ -143,6 +143,10 @@ Ready-to-use manifests live under [`packaging/`](packaging):
 - **Uninstall (Windows):** `.\install.ps1 -Uninstall`
 - Quit Antigravity completely and reopen it through the installed launcher/shortcut to meet Atom. (If Antigravity is already running, launching again forwards arguments to the existing single instance.)
 
+### Antigravity CLI (`agy`)
+
+Atom also works in Antigravity CLI as a custom status line, using only the CLI's documented hooks and `statusLine` setting: `python3 atom_cli_setup.py`. See [CLI.md](CLI.md).
+
 ## States (19 code-generated states)
 
 | State        | Type       | When                                                            | Art                                                |

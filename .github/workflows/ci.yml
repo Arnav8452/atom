@@ -30,7 +30,7 @@ jobs:
           node-version: "22"
       - name: Compile Python sources
         run: >-
-          python -m py_compile atom_hook.py atom_launch.py
+          python -m py_compile atom_hook.py atom_launch.py atom_status.py atom_cli_setup.py
           tools/render_all.py tools/render_gemini_typing.py tools/render_idle.py
           tools/render_moodboard.py tools/make_sprite.py tools/trigger_state.py
       - name: Validate shell scripts
