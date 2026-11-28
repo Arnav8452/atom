@@ -199,6 +199,48 @@ class RenderTests(unittest.TestCase):
                         if mode == "none":
                             self.assertNotIn("\x1b", out)
 
+    BAR = ("auto", "Gemini 4 Neon · high")
+
+    def bar(self, state: str, width: int = 100, detail: str = "", mode: str = "truecolor") -> str:
+        info = {"state": state, "mood": None, "detail": detail}
+        return atom_status.render(info, width, "bar", mode, "v2", self.BAR)
+
+    def test_bar_is_one_line_of_the_right_width(self) -> None:
+        for width in (100, 60, 30):
+            for state in atom_status.LOOKS:
+                out = self.bar(state, width, "approve or deny the prompt above")
+                self.assertNotIn("\n", out)
+                self.assertLessEqual(atom_status.visible_len(out), max(10, width - atom_status.BAR_MARGIN) + 1)
+
+    def test_bar_has_agy_info_left_and_face_at_the_end(self) -> None:
+        out = plain(self.bar("thinking", mode="none"))
+        self.assertTrue(out.startswith("auto · Gemini 4 Neon · high"))
+        self.assertTrue(out.endswith("[" + atom_status.FACES["up"] + "]"))
+        self.assertEqual(len(out), 100 - atom_status.BAR_MARGIN)
+        self.assertIn("thinking…", out)
+
+    def test_bar_face_column_is_fixed(self) -> None:
+        ends = {len(plain(self.bar(state, mode="none"))) for state in ("idle", "thinking", "running", "done")}
+        self.assertEqual(ends, {100 - atom_status.BAR_MARGIN})
+
+    def test_bar_drops_detail_then_truncates_info_when_narrow(self) -> None:
+        wide = plain(self.bar("approval", 120, "approve or deny the prompt above", "none"))
+        self.assertIn("approve or deny", wide)
+        narrow = plain(self.bar("approval", 60, "approve or deny the prompt above", "none"))
+        self.assertNotIn("approve or deny", narrow)
+        self.assertIn("needs your OK", narrow)
+        tiny = plain(self.bar("thinking", 34, mode="none"))
+        self.assertIn("…", tiny)
+        self.assertTrue(tiny.endswith("]"))
+
+    def test_agy_info_from_payload(self) -> None:
+        self.assertEqual(atom_status.agy_info({}), ("auto", ""))
+        payload = {"cycle_mode": "plan", "model": {"display_name": "Gemini 4 Argon (Medium)", "effort": "medium"}}
+        self.assertEqual(atom_status.agy_info(payload), ("plan", "Gemini 4 Argon · medium"))
+        payload = {"model": {"id": "x-model"}, "agent": {"name": "reviewer"}}
+        self.assertEqual(atom_status.agy_info(payload), ("auto · reviewer", "x-model"))
+        self.assertEqual(atom_status.agy_info({"model": None, "agent": "bad"}), ("auto", ""))
+
     def test_v2_is_the_default_skin(self) -> None:
         self.assertEqual(atom_status.DEFAULT_SKIN, "v2")
         info = {"state": "idle", "mood": None, "detail": ""}
@@ -369,7 +411,8 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(self.setup(), 0)
         block = self.read()["statusLine"]
         self.assertEqual(block["type"], "command")
-        self.assertTrue(block["stack_with_default"])
+        self.assertFalse(block["stack_with_default"])  # bar replaces agy's line
+        self.assertIn("--style bar", block["command"])
         self.assertIn("atom_status.py", block["command"])
         self.assertIn("-S -I", block["command"])
 
@@ -416,13 +459,14 @@ class SetupTests(unittest.TestCase):
         self.setup()
         data = self.read()
         data["statusLine"]["padding"] = 2
-        data["statusLine"]["stack_with_default"] = False
         self.write(data)
-        self.assertEqual(self.setup("--style", "line"), 0)
+        self.assertEqual(self.setup("--style", "sprite"), 0)
         block = self.read()["statusLine"]
         self.assertEqual(block["padding"], 2)
-        self.assertFalse(block["stack_with_default"])
-        self.assertIn("--style line", block["command"])
+        self.assertTrue(block["stack_with_default"])  # sprite stacks under agy's line
+        self.assertIn("--style sprite", block["command"])
+        self.assertEqual(self.setup(), 0)
+        self.assertFalse(self.read()["statusLine"]["stack_with_default"])
 
     def test_invalid_json_untouched(self) -> None:
         self.write(None, raw="{ not json")

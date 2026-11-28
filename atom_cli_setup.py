@@ -18,7 +18,10 @@ Options:
   --force               replace a status line you already have (it is saved
                         and put back by --uninstall)
   --skin v2|atom|chibi|base-qt   (default v2)
-  --style auto|sprite|line   --color truecolor|256|none
+  --style bar           (default) one line in place of agy's status line:
+                        its mode/model info, then a small Atom at the end
+  --style auto|sprite|line   pixel Atom / one line, stacked under agy's line
+  --color truecolor|256|none
   --python CMD          interpreter to run (default: python3)
   --settings PATH       settings.json to edit (default: the CLI's)
 
@@ -123,11 +126,13 @@ def install(path: str, command: str, force: bool = False, dry_run: bool = False)
         return 1
 
     existing = data.get("statusLine")
-    block = {"type": "command", "command": command, "stack_with_default": True}
+    # `bar` replaces agy's own status line (it redraws its info); the other
+    # styles stack under it.
+    stack = "--style bar" not in command
+    block = {"type": "command", "command": command, "stack_with_default": stack}
     if is_atom_block(existing):
         # Keep the user's own tweaks (padding, enabled...) but refresh the command.
-        block = {**existing, **{"type": "command", "command": command}}
-        block.setdefault("stack_with_default", True)
+        block = {**existing, **block}
     elif existing not in (None, {}) and not force:
         print(
             "You already have a custom status line:\n"
@@ -204,7 +209,7 @@ def uninstall(path: str, dry_run: bool = False) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    opts = {"settings": default_settings_path(), "python": "python3", "style": "auto", "color": "", "skin": ""}
+    opts = {"settings": default_settings_path(), "python": "python3", "style": "bar", "color": "", "skin": ""}
     flags = set()
     it = iter(args)
     for arg in it:
@@ -222,8 +227,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"Unknown option: {arg} (see --help)", file=sys.stderr)
             return 2
-    if opts["style"] not in ("auto", "sprite", "line"):
-        print("--style must be auto, sprite or line", file=sys.stderr)
+    if opts["style"] not in ("bar", "auto", "sprite", "line"):
+        print("--style must be bar, auto, sprite or line", file=sys.stderr)
         return 2
     if opts["color"] not in ("", "truecolor", "256", "none"):
         print("--color must be truecolor, 256 or none", file=sys.stderr)

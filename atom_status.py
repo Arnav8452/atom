@@ -4,7 +4,9 @@
 Antigravity CLI runs this through its documented `statusLine` setting
 (https://antigravity.google/docs/cli/statusline/) whenever the agent state
 changes, with the session state as JSON on stdin. Whatever this prints to
-stdout is shown under the CLI's own status line (`stack_with_default`).
+stdout is shown as the status line: with `--style bar` it replaces the CLI's
+own line (rebuilding its mode/model info) with Atom at the end; the other
+styles stack under it (`stack_with_default`).
 
 It only uses documented extension points: the status line payload and the
 state files that Atom's own plugin hooks (atom_hook.py) already write. It
@@ -20,6 +22,8 @@ Rules (same spirit as atom_hook.py):
 
 Usage:
   atom_status.py                     read the payload on stdin (what agy does)
+  atom_status.py --style bar         one line that replaces agy's status line:
+                                     its mode/model on the left, Atom at the end
   atom_status.py --style line        always a single line
   atom_status.py --color 256         for terminals without truecolor
   atom_status.py --skin atom         another skin: v2 (default), atom, chibi,
@@ -41,6 +45,7 @@ HOME = os.environ.get("ATOM_HOME") or os.path.join(os.path.expanduser("~"), ".an
 
 WATCHDOG_SEC = 3.0  # the CLI stops a status line command after 5 s
 SPRITE_MIN_WIDTH = 50  # below this terminal width, use the one-line style
+BAR_MARGIN = 2  # columns left free at the right end in the `bar` style
 HOOK_STATE_TTL_SEC = 15 * 60  # hook state older than this is ignored
 EMOTION_TTL_SEC = 45  # how long an emotion.json reaction counts as fresh
 REACTION_TTL_SEC = 15 * 60  # how long "done"/"error"/... stays after a turn
@@ -572,7 +577,50 @@ def _look_state(info: dict) -> str:
     return state
 
 
-def render(info: dict, width: int, style: str = "auto", mode: str = "truecolor", skin: str = DEFAULT_SKIN) -> str:
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+_EFFORT_SUFFIX = re.compile(r"\s*\(([^()]*)\)\s*$")
+
+
+def visible_len(text: str) -> int:
+    return len(_ANSI.sub("", text))
+
+
+def agy_info(payload: dict) -> tuple[str, str]:
+    """(mode, "model · effort"): what agy's own status line shows, rebuilt
+    from the documented payload, for the `bar` style that replaces it."""
+    mode = str(payload.get("cycle_mode") or "auto")
+    agent = payload.get("agent")
+    if isinstance(agent, dict) and agent.get("name"):
+        mode = f"{mode} · {agent['name']}"
+    model = payload.get("model")
+    parts = []
+    if isinstance(model, dict):
+        name = str(model.get("display_name") or model.get("id") or "")
+        effort = str(model.get("effort") or "")
+        m = _EFFORT_SUFFIX.search(name)
+        if m and effort and m.group(1).strip().lower() == effort.lower():
+            name = name[: m.start()]
+        if name:
+            parts.append(name)
+        if effort:
+            parts.append(effort)
+    return mode, " · ".join(parts)
+
+
+def _truncate(text: str, limit: int) -> str:
+    if limit <= 0:
+        return ""
+    return text if len(text) <= limit else text[: max(0, limit - 1)] + "…"
+
+
+def render(
+    info: dict,
+    width: int,
+    style: str = "auto",
+    mode: str = "truecolor",
+    skin: str = DEFAULT_SKIN,
+    bar_info: tuple[str, str] = ("", ""),
+) -> str:
     sk = get_skin(skin)
     state = info["state"]
     look = _look_state(info)
@@ -587,8 +635,40 @@ def render(info: dict, width: int, style: str = "auto", mode: str = "truecolor",
 
     if style == "auto":
         style = "sprite" if width >= SPRITE_MIN_WIDTH else "line"
-    if mode == "none":
+    if mode == "none" and style == "sprite":
         style = "line"  # the sprite is made of colour
+
+    if style == "bar":
+        # One line in place of agy's own status line: its mode/model info on
+        # the left, a small Atom face at the right end.
+        eyes = LOOKS.get(look, LOOKS["idle"])[0]
+        body = _tinted(sk["palette"]["B"], LOOKS.get(look, LOOKS["idle"])[2], "body")
+        face = FACES.get(eyes, FACES["open"])
+        if mode == "none":
+            head = f"[{face}]"
+        else:
+            head = fg(body, mode) + "▐" + bg(body, mode) + fg(EYE_RGB, mode) + face + reset + fg(body, mode) + "▌" + reset
+        avail = max(10, width - BAR_MARGIN)
+        # Label first, so the face stays pinned to the end of the line.
+        right = f"{fg(colour, mode)}{label}{reset} {head}"
+        with_detail = (f"{dim}{detail} ·{reset} " if detail else "") + right
+        agy_mode, model = bar_info
+        left_plain = " · ".join(p for p in (agy_mode, model) if p)
+        if visible_len(with_detail) + len(left_plain) + 2 <= avail:
+            right = with_detail
+        room = avail - visible_len(right) - 2
+        left_plain = _truncate(left_plain, room)
+        if left_plain:
+            # Colour the mode like agy does, dim the rest.
+            if agy_mode and left_plain.startswith(agy_mode):
+                rest = left_plain[len(agy_mode):]
+                left = f"{fg((250, 170, 80), mode)}{agy_mode}{reset}{dim}{rest}{reset}"
+            else:
+                left = f"{dim}{left_plain}{reset}"
+        else:
+            left = ""
+        gap = max(1, avail - visible_len(left) - visible_len(right))
+        return left + " " * gap + right
 
     if style == "line":
         eyes = LOOKS.get(look, LOOKS["idle"])[0]
@@ -629,7 +709,7 @@ def _parse_args(argv: list[str]) -> dict:
         opts["skin"] = os.environ.get("ATOM_SKIN", "")
         if opts["skin"] not in SKINS:
             opts["skin"] = DEFAULT_SKIN
-    if opts["style"] not in ("auto", "sprite", "line"):
+    if opts["style"] not in ("auto", "sprite", "line", "bar"):
         opts["style"] = "auto"
     if opts["color"] not in ("truecolor", "256", "none"):
         opts["color"] = os.environ.get("ATOM_COLOR", "") or "truecolor"
@@ -657,7 +737,9 @@ def demo(opts: dict) -> str:
         ("waking", None, ""), ("sleeping", None, "back at 14:30"), ("watching", None, "1 background task"),
     ]
     for state, mood, detail in examples:
-        blocks.append(render({"state": state, "mood": mood, "detail": detail}, 120, opts["style"], opts["color"], opts["skin"]))
+        info = {"state": state, "mood": mood, "detail": detail}
+        bar = ("auto", "Gemini 4 Neon · high")
+        blocks.append(render(info, 100, opts["style"], opts["color"], opts["skin"], bar))
     return "\n\n".join(blocks)
 
 
@@ -686,7 +768,7 @@ def main(argv: list[str] | None = None) -> None:
         if not isinstance(payload, dict):
             payload = {}
         width = int(_num(payload.get("terminal_width")) or 80)
-        out = render(resolve(payload), width, opts["style"], opts["color"], opts["skin"])
+        out = render(resolve(payload), width, opts["style"], opts["color"], opts["skin"], agy_info(payload))
     except Exception:
         out = fallback
     finally:

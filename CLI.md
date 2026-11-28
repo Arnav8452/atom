@@ -1,8 +1,9 @@
 # Atom for Antigravity CLI
 
 Atom can live in [Antigravity CLI](https://antigravity.google/docs/cli/statusline/) (`agy`) as a
-custom status line: a small pixel Atom under the CLI's own status line that reacts to
-what the agent is doing. Run `python3 atom_status.py --demo` to see every state.
+custom status line. By default Atom shares the CLI's status line: the CLI's mode and
+model info on the left, a small Atom face at the end of the line that reacts to what the
+agent is doing. No extra lines are used. Run `python3 atom_status.py --demo` to see every state.
 
 ## Stays within Antigravity's terms
 
@@ -38,8 +39,8 @@ never stores the status line's `email`, title, paths or prompts. (The desktop ov
    ```json
    "statusLine": {
      "type": "command",
-     "command": "python3 -S -I /path/to/atom/atom_status.py",
-     "stack_with_default": true
+     "command": "python3 -S -I /path/to/atom/atom_status.py --style bar",
+     "stack_with_default": false
    }
    ```
 
@@ -52,10 +53,11 @@ Turn it off with `python3 atom_cli_setup.py --uninstall`, or in the CLI with
 
 | Option | |
 |---|---|
+| `--style bar` | (default) one line in place of the CLI's own, `auto · Gemini 4 Neon · high      thinking… ▐▀ ▀▌`. The CLI's mode, agent, model and effort are rebuilt from the payload. Its other built-in extras on that line (thinking timers, tips, quota warnings) don't show. |
 | `--skin v2` | Atom V2: round blob with a rainbow beanie and pom-pom (default) |
 | `--skin atom` / `--skin chibi` / `--skin base-qt` | the classic box Atom / Cozy Chibi / base qt. (`ATOM_SKIN` works too) |
-| `--style auto` | pixel Atom at 50+ columns, one line below that (default) |
-| `--style sprite` / `--style line` | always the pixel Atom / always one line |
+| `--style auto` | stacked under the CLI's line: pixel Atom at 50+ columns, one line below that |
+| `--style sprite` / `--style line` | stacked: always the pixel Atom / always one line |
 | `--color 256` | for terminals without truecolor (`ATOM_COLOR=256` works too) |
 | `--color none` | no colour (one line); `NO_COLOR` is honoured |
 
