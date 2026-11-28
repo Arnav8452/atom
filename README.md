@@ -16,6 +16,10 @@ subagents, sleeping on quota limits, or reacting to your tone.
 one-line bar or a big pixel Atom V2 that you switch between with `atom-toggle`.
 See [Atom for Antigravity CLI](#atom-for-antigravity-cli) and the full guide in [CLI.md](CLI.md).
 
+Atom is a community project, driven by
+[r/google_antigravity](https://www.reddit.com/r/google_antigravity/). Its skins
+were designed by members there; see [Community & Credits](#community--credits).
+
 - **19 code-generated animated states:** every state (`idle`, `thinking`,
   `typing`, `working`, `exploring`, `running`, `delegating`, `asking`,
   `listening`, `watching`, `closed`, `dance`, `done`, `happy`, `sad`, `angry`,
@@ -310,6 +314,25 @@ y≈222, so every state lines up. If a haze shows around the sprite, raise
 - **CLI status line:** `atom_status.py` reads the CLI's status line JSON but never stores or prints its `email`, conversation title, paths or prompts; it writes only the current view and reaction under `~/.antigravity-atom/cli`.
 - **Isolated hooks:** `atom_hook.py` runs under `python3 -S -I` with empty stdout on `PreToolUse` so Antigravity's own permission controls remain untouched.
 - See [SECURITY.md](SECURITY.md) for reporting vulnerabilities privately via GitHub Security Advisories.
+
+## Community & Credits
+
+Atom is driven by the community at
+[r/google_antigravity](https://www.reddit.com/r/google_antigravity/): skins,
+ideas, art, memes and testing all come from there.
+
+**Skin designs**
+
+| Skin | Designed by |
+| --- | --- |
+| Atom V2 (the default) | [u/AaverageRed](https://www.reddit.com/user/AaverageRed/) |
+| base qt. | [u/Mental-Armadillo3320](https://www.reddit.com/user/Mental-Armadillo3320/) |
+| Cozy Chibi | [u/whimsicalgods](https://www.reddit.com/user/whimsicalgods/) |
+| Nobility Outfits | [u/XXYZZYXZYX](https://www.reddit.com/user/XXYZZYXZYX/) |
+
+**Contributors:** [Rohan Gadakh](https://github.com/rohangadakh)
+
+**Special thanks:** [u/aalopaneer](https://www.reddit.com/r/google_antigravity/s/SxwERtnMvt)
 
 ## Contributing & Community
 

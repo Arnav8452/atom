@@ -1,5 +1,5 @@
 {
- "_help": "Artwork shown in the website gallery. Put the image in art/ (fan art in art/fan/), or a web-sized copy of a very large piece in site/art/, then add an entry: file, title, kind (fan or ai), and for fan art by (artist) and an optional link. Manga pages go in the manga list, in reading order. tools/render_gallery.py builds the web copies when the site is published.",
+ "_help": "Artwork shown in the website gallery. Put the image in art/ (fan art in art/fan/), or a web-sized copy of a very large piece in site/art/, then add an entry: file, title, kind (fan or ai), and for fan art by (artist) and an optional link. Manga pages go in the manga list, in reading order, and memes (with an optional caption) in the memes list. tools/render_gallery.py builds the web copies when the site is published.",
  "art": [
   {
    "file": "site/art/vs-splash-ref.webp",
@@ -107,6 +107,13 @@
    "file": "site/art/manga/page-12.webp",
    "title": "Decoy",
    "kind": "ai"
+  }
+ ],
+ "memes": [
+  {
+   "file": "site/art/tan-trump.gif",
+   "title": "Tan-Trump",
+   "caption": "Swear at your agent and this is what you get: Atom, red in the face, throwing a full tantrum on the prompt bar."
   }
  ]
 }

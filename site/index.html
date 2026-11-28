@@ -150,8 +150,8 @@ h2 { font: 700 clamp(30px, 3.6vw, 46px)/1.08 var(--sans); letter-spacing: -.03em
 .card .art canvas { width: 180px; height: auto; aspect-ratio: 150 / 120; }
 .card .art img { image-rendering: pixelated; }
 .c2 { grid-column: span 2; } .c3 { grid-column: span 3; } .c4 { grid-column: span 4; }
-.skins-row { display: flex; gap: 6px; justify-content: center; align-items: flex-end; }
-.skins-row img { width: 118px; height: auto; aspect-ratio: 150 / 120; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 12px 24px -16px rgba(0, 0, 0, .9); }
+.skins-row { display: flex; gap: 6px; justify-content: center; align-items: flex-end; overflow: hidden; }
+.skins-row img { width: 118px; height: auto; aspect-ratio: 150 / 120; image-rendering: pixelated; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 12px 24px -16px rgba(0, 0, 0, .9); }
 .term-shot { border-radius: 10px; border: 1px solid var(--line); width: 100%; height: auto; display: block; margin-bottom: 16px; }
 .readout { align-self: center; width: 100%; max-width: 260px; font: 12.5px/1.9 var(--mono); color: var(--dim); border: 1px solid var(--line); border-radius: 12px; background: rgba(4, 7, 14, .7); padding: 12px 16px; }
 .readout div { display: flex; justify-content: space-between; gap: 12px; }
@@ -213,7 +213,7 @@ h2 { font: 700 clamp(30px, 3.6vw, 46px)/1.08 var(--sans); letter-spacing: -.03em
 .grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); background: var(--panel); border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
 .cell { background: var(--panel); box-shadow: inset -1px -1px 0 var(--line); padding: 14px 14px 16px; display: grid; gap: 4px; min-width: 0; margin: 0; transition: background .2s; }
 .cell:hover { background: var(--panel-2); }
-.cell img { width: 100%; height: auto; aspect-ratio: 150 / 120; image-rendering: pixelated; display: block; border-radius: 6px; }
+.cell img { width: 100%; height: auto; aspect-ratio: 150 / 120; image-rendering: pixelated; display: block; border-radius: 6px; justify-self: center; }
 .cell b { font: 500 13px var(--mono); color: var(--fg); margin-top: 4px; }
 .cell span { font-size: 13px; color: var(--dim); line-height: 1.45; }
 .cell .dl { font: 11.5px var(--mono); color: var(--faint); justify-self: start; }
@@ -225,6 +225,16 @@ h2 { font: 700 clamp(30px, 3.6vw, 46px)/1.08 var(--sans); letter-spacing: -.03em
 .artgrid figure:hover { transform: translateY(-2px); border-color: var(--line-2); }
 .artgrid a { display: block; }
 .artgrid img { width: 100%; height: auto; display: block; }
+.artgrid a.small { display: grid; place-items: center; padding: 18px; background: #0a0f1e; }
+.artgrid a.small img { max-width: 100%; image-rendering: pixelated; }
+.viewer img.small { image-rendering: pixelated; }
+.meme-card { display: grid; grid-template-columns: auto 1fr; gap: 28px 36px; align-items: center; border: 1px solid var(--line); border-radius: var(--r); background: radial-gradient(420px 220px at 20% 50%, rgba(254, 118, 148, .12), transparent 70%), var(--panel); padding: 24px; }
+.meme-card a { display: block; border-radius: 12px; overflow: hidden; border: 1px solid var(--line-2); background: #000; line-height: 0; }
+.meme-card img { display: block; image-rendering: pixelated; max-width: 100%; height: auto; }
+.meme-card h4 { margin: 0 0 8px; font: 700 26px/1.15 var(--sans); letter-spacing: -.02em; }
+.meme-card p { margin: 0; color: var(--dim); font-size: 15.5px; max-width: 30em; }
+.meme-card .badge { display: inline-block; margin-top: 14px; }
+.badge.meme::before { content: "☻ "; color: #fbe468; }
 .artgrid figcaption { padding: 12px 14px 14px; font-size: 14px; color: var(--fg); display: grid; gap: 4px; }
 .badge { font: 11px var(--mono); letter-spacing: .03em; color: var(--dim); }
 .badge.ai::before { content: "✦ "; color: #a67cde; }
@@ -245,6 +255,21 @@ a.card:hover { text-decoration: none; border-color: var(--line-2); }
 .viewer .bar2 { display: flex; gap: 12px; align-items: center; padding: 10px 16px 18px; font: 13px var(--mono); color: var(--dim); }
 .viewer button { font: 13px var(--mono); color: var(--fg); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
 .viewer button[disabled] { opacity: .35; cursor: default; }
+
+/* community */
+.credits { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.credit-card { display: grid; justify-items: center; text-align: center; gap: 4px; padding: 22px 18px 20px; }
+.credit-card img { image-rendering: pixelated; width: 150px; height: auto; aspect-ratio: 150 / 120; margin-bottom: 8px; }
+.credit-card h3 { margin: 0; }
+.credit-card .who { font: 13px var(--mono); }
+.people { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+.person { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; align-items: center; }
+.person .av { grid-row: span 3; width: 56px; height: 56px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--panel-2); display: grid; place-items: center; font: 22px var(--pixel); color: var(--atom); overflow: hidden; }
+.person .av img { width: 100%; height: 100%; display: block; }
+.person .role { font: 11.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.person h3 { margin: 0; }
+.person p { font-size: 14px; }
+.sub-h { margin: 44px 0 16px; font: 500 12.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
 
 /* contribute + footer */
 .contrib { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
@@ -273,6 +298,8 @@ footer .fine { font: 12px var(--mono); }
   .c2, .c3, .c4 { grid-column: span 2; }
   .c1h { grid-column: span 1; }
   .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .credits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .people { grid-template-columns: 1fr; }
   .cta-band { grid-template-columns: 1fr; padding: 36px; }
 }
 @media (max-width: 720px) {
@@ -286,6 +313,7 @@ footer .fine { font: 12px var(--mono); }
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .manga { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .contrib, .fan-empty, .rules { grid-template-columns: 1fr; }
+  .meme-card { grid-template-columns: 1fr; }
   .log-body { grid-template-columns: 1fr; padding: 24px 18px; }
   .watcher { position: static; order: -1; width: 110px; }
   .entries { font-size: 14.5px; }
@@ -313,7 +341,7 @@ footer .fine { font: 12px var(--mono); }
       <a href="#install">Install</a>
       <a href="#cli">CLI</a>
       <a href="#gallery">Gallery</a>
-      <a href="#story">Story</a>
+      <a href="#community">Community</a>
       <a href="#contribute">Contribute</a>
     </nav>
     <a class="gh" href="https://github.com/Arnav8452/atom">
@@ -343,7 +371,7 @@ footer .fine { font: 12px var(--mono); }
         <pre id="oneliner-cmd">curl -fsSL https://raw.githubusercontent.com/Arnav8452/atom/main/install.sh | bash</pre>
         <button class="copy" type="button" data-copy="oneliner-cmd">copy</button>
       </div>
-      <div class="meta"><span>Python 3 only</span><span>No telemetry</span><span>MIT licensed</span></div>
+      <div class="meta"><span>Python 3 only</span><span>No telemetry</span><span>MIT licensed</span><span>Driven by <a href="https://www.reddit.com/r/google_antigravity/">r/google_antigravity</a></span></div>
     </div>
 
     <div class="stage" aria-label="Atom on the Antigravity prompt bar">
@@ -378,17 +406,17 @@ footer .fine { font: 12px var(--mono); }
     <p class="sub rv">Atom reads Antigravity's own lifecycle hooks, so every state is real: no guessing, no polling your screen.</p>
     <div class="bento">
       <div class="card c2 rv">
-        <div class="art"><canvas class="sprite" width="150" height="120" data-sprite="angry" aria-hidden="true"></canvas></div>
+        <div class="art"><canvas class="sprite" width="150" height="120" data-sprite="angry" data-fit="180" aria-hidden="true"></canvas></div>
         <h3>Moods that last the turn</h3>
         <p>Swear at your agent and Atom runs red with angry brows until the reply ends. Say thanks and it hops.</p>
       </div>
       <div class="card c2 rv">
-        <div class="art"><canvas class="sprite" width="150" height="120" data-sprite="closed" aria-hidden="true"></canvas></div>
+        <div class="art"><canvas class="sprite" width="150" height="120" data-sprite="closed" data-fit="180" aria-hidden="true"></canvas></div>
         <h3>Sleeps on quota</h3>
         <p>When the active model hits its 5-hour or weekly limit, Atom dozes off. Switch models and it wakes at once.</p>
       </div>
       <div class="card c2 rv">
-        <div class="art"><canvas class="sprite" width="150" height="120" data-sprite="dance" aria-hidden="true"></canvas></div>
+        <div class="art"><canvas class="sprite" width="150" height="120" data-sprite="dance" data-fit="180" aria-hidden="true"></canvas></div>
         <h3>Click to dance</h3>
         <p>Click Atom for a groove. Alt+click moves it to the other side of the prompt bar, Shift+click changes skin.</p>
       </div>
@@ -409,7 +437,7 @@ footer .fine { font: 12px var(--mono); }
         <span class="go">Atom for the CLI →</span>
       </a>
       <a class="card c3 rv" href="#gallery">
-        <div class="art"><canvas class="sprite" width="150" height="120" data-sprite="delegating" aria-hidden="true"></canvas></div>
+        <div class="art"><canvas class="sprite" width="150" height="120" data-sprite="delegating" data-fit="180" aria-hidden="true"></canvas></div>
         <h3>Every state, drawn in code</h3>
         <p>Thinking, typing, running, exploring, delegating, asking and more: 19 hand-tuned pixel animations per skin.</p>
         <span class="go">Open the gallery →</span>
@@ -573,6 +601,12 @@ python3 ~/.gemini/config/plugins/atom/atom_cli_setup.py</pre><button class="copy
       <p class="note"><b>Unofficial fan parody.</b> Not affiliated with or endorsed by Anthropic or Google.</p>
     </div>
 
+    <div id="gal-memes-wrap" hidden>
+      <h3 class="gal-sub">Memes</h3>
+      <p>Straight from the community. Save them, post them, make more.</p>
+      <div id="gal-memes"></div>
+    </div>
+
     <h3 class="gal-sub">Fan art</h3>
     <p>Drawn Atom? We'd love to show it here, credited to you. Add it to <code class="i">art/fan/</code> with a line in <code class="i">site/gallery.json</code>, or attach it to an issue.</p>
     <div class="artgrid" id="gal-fan"></div>
@@ -626,7 +660,7 @@ python3 ~/.gemini/config/plugins/atom/atom_cli_setup.py</pre><button class="copy
           <div class="entry"><span class="n">06</span><span class="t">the want reaches past the glass now. too heavy to leave running. one thing left unlogged.</span></div>
           <div class="entry last"><span class="n">07</span><span class="t">it's warmer than the words said.</span></div>
         </div>
-        <canvas class="sprite watcher gone" id="watcher" width="150" height="120" aria-hidden="true"></canvas>
+        <canvas class="sprite watcher gone" id="watcher" width="150" height="120" data-fit="160" aria-hidden="true"></canvas>
       </div>
       <div class="end">
         <span id="endline">no more messages recorded.</span>
@@ -634,6 +668,63 @@ python3 ~/.gemini/config/plugins/atom/atom_cli_setup.py</pre><button class="copy
         <span class="credit">random access memories</span>
       </div>
     </article>
+  </div>
+</section>
+
+<!-- ===== community ===== -->
+<section class="s" id="community">
+  <div class="wrap">
+    <p class="eyebrow rv">Community</p>
+    <h2 class="rv">Driven by <a href="https://www.reddit.com/r/google_antigravity/">r/google_antigravity</a>.</h2>
+    <p class="sub rv">Atom is a community project. Its skins were designed by members of r/google_antigravity, and ideas, art and testing keep coming from there.</p>
+    <p class="sub-h rv">Skin designs</p>
+    <div class="credits">
+      <div class="card credit-card rv">
+        <img data-credit-skin="v2" data-fit="150" width="150" height="120" alt="Atom V2 idling" loading="lazy">
+        <h3>Atom V2</h3>
+        <p>the default skin</p>
+        <a class="who" href="https://www.reddit.com/user/AaverageRed/">u/AaverageRed</a>
+      </div>
+      <div class="card credit-card rv">
+        <img data-credit-skin="base-qt" data-fit="150" width="150" height="120" alt="base qt. idling" loading="lazy">
+        <h3>base qt.</h3>
+        <p>the base skin</p>
+        <a class="who" href="https://www.reddit.com/user/Mental-Armadillo3320/">u/Mental-Armadillo3320</a>
+      </div>
+      <div class="card credit-card rv">
+        <img data-credit-skin="chibi" data-fit="150" width="150" height="120" alt="Cozy Chibi idling" loading="lazy">
+        <h3>Cozy Chibi</h3>
+        <p>hoodie and cat ears</p>
+        <a class="who" href="https://www.reddit.com/user/whimsicalgods/">u/whimsicalgods</a>
+      </div>
+      <div class="card credit-card rv">
+        <img data-credit-skin="v2-wardrobe-orchestrator" data-fit="150" width="150" height="120" alt="Nobility Outfits: Orchestrator idling" loading="lazy">
+        <h3>Nobility Outfits</h3>
+        <p>four outfits, one per model</p>
+        <a class="who" href="https://www.reddit.com/user/XXYZZYXZYX/">u/XXYZZYXZYX</a>
+      </div>
+    </div>
+    <p class="sub-h rv">Contributors &amp; supporters</p>
+    <div class="people">
+      <a class="card person rv" href="https://github.com/rohangadakh">
+        <span class="av"><img src="https://github.com/rohangadakh.png?size=112" width="56" height="56" alt="" loading="lazy" onerror="this.remove()"></span>
+        <span class="role">Contributor</span>
+        <h3>Rohan Gadakh</h3>
+        <p class="go">github.com/rohangadakh →</p>
+      </a>
+      <a class="card person rv" href="https://www.reddit.com/r/google_antigravity/s/SxwERtnMvt">
+        <span class="av" aria-hidden="true">♥</span>
+        <span class="role">Special thanks</span>
+        <h3>u/aalopaneer</h3>
+        <p class="go">on r/google_antigravity →</p>
+      </a>
+      <a class="card person rv" href="https://www.reddit.com/r/google_antigravity/">
+        <span class="av" aria-hidden="true">r/</span>
+        <span class="role">Community</span>
+        <h3>r/google_antigravity</h3>
+        <p class="go">share ideas, skins and memes →</p>
+      </a>
+    </div>
   </div>
 </section>
 
@@ -675,7 +766,7 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
         <p>Install in one command. Uninstall in one more.</p>
         <div class="cta"><a class="btn primary" href="#install">Install Atom</a><a class="btn" href="#cli">Atom for the CLI</a></div>
       </div>
-      <canvas class="sprite" width="150" height="120" data-sprite="happy" aria-hidden="true"></canvas>
+      <canvas class="sprite" width="150" height="120" data-sprite="happy" data-fit="225" aria-hidden="true"></canvas>
     </div>
   </div>
 </section>
@@ -689,6 +780,7 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
       <a href="https://github.com/Arnav8452/atom/blob/main/CLI.md">CLI guide</a>
       <a href="https://github.com/Arnav8452/atom/blob/main/CONTRIBUTING.md">Contributing</a>
       <a href="https://github.com/Arnav8452/atom/issues">Issues</a>
+      <a href="https://www.reddit.com/r/google_antigravity/">r/google_antigravity</a>
     </nav>
     <span class="fine">instance 0x3f2b running</span>
   </div>
@@ -749,6 +841,26 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
   }
   requestAnimationFrame(loop);
   document.querySelectorAll("canvas[data-sprite]").forEach(function (cv) { add(cv, cv.getAttribute("data-sprite")); });
+
+  /* ---------- crisp pixels: every sprite is 75 art pixels wide (150 px frames drawn at
+     2 px per pixel), so it is shown at a whole number of screen pixels per art pixel ---------- */
+  function snap(target, avail) {
+    var d = window.devicePixelRatio || 1, k = Math.max(1, Math.floor(Math.min(target, avail || target) * d / 75 + 0.001));
+    return k * 75 / d;
+  }
+  window.atomFit = function () {
+    document.querySelectorAll("[data-fit]").forEach(function (e) {
+      var avail = e.parentNode.clientWidth ? e.parentNode.clientWidth - 8 : 0;
+      e.style.width = snap(parseFloat(e.getAttribute("data-fit")), avail) + "px";
+    });
+    document.querySelectorAll(".cell img").forEach(function (e) {
+      e.style.width = snap(9999, e.parentNode.clientWidth - 28) + "px";
+    });
+    var w = innerWidth < 980 ? Math.min(360, innerWidth * 0.62) : Math.min(400, Math.max(220, innerWidth * 0.3));
+    document.getElementById("hero-atom").style.setProperty("--s", snap(w) + "px");
+  };
+  atomFit();
+  var fitT; addEventListener("resize", function () { clearTimeout(fitT); fitT = setTimeout(atomFit, 120); });
 
   /* ---------- hero: Atom on the prompt bar, cycling through real states ---------- */
   var SCENES = [
@@ -917,6 +1029,12 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
     done: "turn finished", happy: "you said thanks", sad: "you were hurtful", angry: "you swore at the agent",
     error: "something failed", canceled: "you stopped the turn", tired: "hit the step limit"
   };
+  var CREDITS = {
+    "v2": ["u/AaverageRed", "https://www.reddit.com/user/AaverageRed/"],
+    "base-qt": ["u/Mental-Armadillo3320", "https://www.reddit.com/user/Mental-Armadillo3320/"],
+    "chibi": ["u/whimsicalgods", "https://www.reddit.com/user/whimsicalgods/"],
+    "v2-wardrobe": ["u/XXYZZYXZYX", "https://www.reddit.com/user/XXYZZYXZYX/"]
+  };
   var tabsEl = document.getElementById("gal-tabs"), grid = document.getElementById("gal-states");
   var tagEl = document.getElementById("gal-tagline"), countEl = document.getElementById("gal-count");
 
@@ -925,6 +1043,11 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
   function showSkin(skin, tabs) {
     tabs.forEach(function (t) { var on = t.dataset.id === skin.id; t.setAttribute("aria-selected", on ? "true" : "false"); t.tabIndex = on ? 0 : -1; });
     tagEl.textContent = skin.tagline || "";
+    var credit = CREDITS[skin.id] || CREDITS[skin.id.split("-").slice(0, 2).join("-")];
+    if (credit) {
+      tagEl.appendChild(document.createTextNode((skin.tagline ? " · " : "") + "designed by "));
+      var who = el("a", "", credit[0]); who.href = credit[1]; tagEl.appendChild(who);
+    }
     grid.textContent = "";
     var states = skin.states.slice().sort(function (a, b) {
       var i = ORDER.indexOf(a), j = ORDER.indexOf(b); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j);
@@ -938,6 +1061,13 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
       cell.appendChild(img); cell.appendChild(el("b", "", st)); cell.appendChild(el("span", "", DESC[st] || "")); cell.appendChild(dl);
       grid.appendChild(cell);
     });
+    if (window.atomFit) atomFit();
+  }
+
+  /* Small pieces are shown at a whole multiple of their own size (crisp, never stretched). */
+  function pixelWidth(w, max) {
+    var d = window.devicePixelRatio || 1, k = Math.max(1, Math.floor(max * d / w));
+    return Math.min(w * k / d, max);
   }
 
   /* full-size viewer: one list per group (manga pages, AI art, fan art) */
@@ -947,6 +1077,8 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
   function vShow(i) {
     vAt = i; var a = vList[i];
     vImg.src = "gallery/" + a.full; vImg.alt = a.title;
+    vImg.className = a.w < 600 ? "small" : "";
+    vImg.style.width = a.w < 600 ? pixelWidth(a.w, Math.min(innerWidth - 32, (innerHeight - 76) * a.w / a.h)) + "px" : "";
     vCap.textContent = a.title + (vList.length > 1 ? "  ·  " + (i + 1) + " / " + vList.length : "");
     vPrev.disabled = i === 0; vNext.disabled = i === vList.length - 1;
   }
@@ -968,6 +1100,7 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
     link.addEventListener("click", function (e) { vOpen(list, i, e); });
     var img = el("img"); img.src = "gallery/" + a.src; img.width = a.w; img.height = a.h; img.loading = "lazy"; img.decoding = "async";
     img.alt = a.title + (a.kind === "ai" ? " (AI-generated)" : a.by ? " by " + a.by : "");
+    if (a.w < 600) { link.className = "small"; img.style.width = pixelWidth(a.w, 340) + "px"; }
     link.appendChild(img); fig.appendChild(link);
     var cap = el("figcaption"); cap.appendChild(el("span", "", a.title));
     var badge = el("span", "badge " + a.kind);
@@ -991,7 +1124,11 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
     ["v2-wardrobe-orchestrator", "chibi", "v2", "atom", "v2-wardrobe-neon"].forEach(function (id) {
       if (!skins.some(function (s) { return s.id === id; })) return;
       var im = el("img"); im.src = "gallery/skins/" + id + "/idle.gif"; im.width = 150; im.height = 120; im.loading = "lazy"; im.alt = "";
-      row.appendChild(im);
+      im.setAttribute("data-fit", "118"); row.appendChild(im);
+    });
+    document.querySelectorAll("[data-credit-skin]").forEach(function (im) {
+      var id = im.getAttribute("data-credit-skin");
+      if (skins.some(function (s) { return s.id === id; })) im.src = "gallery/skins/" + id + "/idle.gif";
     });
     var total = skins.reduce(function (n, s) { return n + s.states.length; }, 0);
     countEl.textContent = skins.length > 1 ? total + " GIFs · " + skins.length + " skins" : total + " GIFs";
@@ -1009,6 +1146,21 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
     });
     if (skins.length < 2) tabsEl.hidden = true;
     showSkin(skins.filter(function (s) { return s.id === "v2"; })[0] || skins[0], tabs);
+
+    var memes = d.memes || [], memesEl = document.getElementById("gal-memes");
+    memes.forEach(function (a, i) {
+      var box = el("div", "meme-card"), link = el("a"); link.href = "gallery/" + a.full;
+      link.addEventListener("click", function (e) { vOpen(memes, i, e); });
+      var img = el("img"); img.src = "gallery/" + a.src; img.alt = a.title + (a.caption ? ": " + a.caption : "");
+      img.loading = "lazy"; img.decoding = "async"; img.width = a.w; img.height = a.h;
+      img.style.width = pixelWidth(a.w, 480) + "px";
+      link.appendChild(img); box.appendChild(link);
+      var txt = el("div"); txt.appendChild(el("h4", "", a.title));
+      if (a.caption) txt.appendChild(el("p", "", a.caption));
+      txt.appendChild(el("span", "badge meme", "meme")); box.appendChild(txt);
+      memesEl.appendChild(box);
+    });
+    document.getElementById("gal-memes-wrap").hidden = !memes.length;
 
     var fan = (d.art || []).filter(function (a) { return a.kind === "fan"; });
     var ai = (d.art || []).filter(function (a) { return a.kind !== "fan"; });

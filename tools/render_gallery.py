@@ -10,7 +10,7 @@ sheets (150x120 frames). A folder's skin.json gives its name, tagline, accent
 and order; assets/atom has none and is the classic skin. Each GIF plays the
 state's loop section on the site's panel colour, scaled 2x with crisp pixels.
 
-Artwork ("art") and manga pages ("manga") come from art/ (originals) or
+Artwork ("art"), manga pages ("manga") and memes ("memes") come from art/ (originals) or
 site/art/ (web-sized copies of large pieces kept outside the repo). Entries
 whose file doesn't exist (e.g. not committed yet) are skipped. Sources are only
 read, never changed.
@@ -124,7 +124,7 @@ def _source(src: Path, rel: str) -> Path | None:
 
 def build(src: Path, out: Path, manifest_path: Path) -> dict:
     out.mkdir(parents=True, exist_ok=True)
-    data: dict = {"skins": [], "art": [], "manga": []}
+    data: dict = {"skins": [], "art": [], "manga": [], "memes": []}
 
     for skin_id, meta, d in skin_dirs(src / "assets"):
         states = []
@@ -141,7 +141,7 @@ def build(src: Path, out: Path, manifest_path: Path) -> dict:
         print(f"{skin_id}: {len(states)} GIFs")
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
-    for section in ("art", "manga"):
+    for section in ("art", "manga", "memes"):
         for i, entry in enumerate(manifest.get(section, [])):
             rel = entry.get("file", "")
             path = _source(src, rel)
@@ -155,9 +155,9 @@ def build(src: Path, out: Path, manifest_path: Path) -> dict:
             data[section].append({
                 "src": "art/" + copied["src"], "full": "art/" + copied["full"], "w": copied["w"], "h": copied["h"],
                 "title": entry.get("title", path.stem), "kind": "fan" if entry.get("kind") == "fan" else "ai",
-                "by": entry.get("by", ""), "link": entry.get("link", ""),
+                "by": entry.get("by", ""), "link": entry.get("link", ""), "caption": entry.get("caption", ""),
             })
-    print(f"art: {len(data['art'])} pieces, manga: {len(data['manga'])} pages")
+    print(f"art: {len(data['art'])} pieces, manga: {len(data['manga'])} pages, memes: {len(data['memes'])}")
 
     (out / "gallery.json").write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
     return data
