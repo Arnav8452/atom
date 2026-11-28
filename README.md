@@ -61,11 +61,12 @@ Install https://github.com/Arnav8452/atom for my OS and verify setup.
 > [!TIP]
 > Make sure Antigravity is **fully quit** before launching the Atom shortcut - on **Windows/Linux** check the system tray, and on **macOS** press `Cmd+Q` (or Quit from the Dock) instead of just closing the window.
 
-| Platform | Single-step Install Command | Plugin Path Created | Launcher Created |
-| -------- | --------------------------- | ------------------- | ---------------- |
-| **Linux** | `curl -fsSL https://raw.githubusercontent.com/Arnav8452/atom/main/install.sh \| bash` | `~/.gemini/config/plugins/atom` | `~/.local/share/applications/antigravity.desktop` |
-| **macOS** | `curl -fsSL https://raw.githubusercontent.com/Arnav8452/atom/main/install.sh \| bash` | `~/.gemini/config/plugins/atom` | `~/Applications/Antigravity (Atom).app` |
-| **Windows** | `irm https://raw.githubusercontent.com/Arnav8452/atom/main/install.ps1 \| iex` | `%USERPROFILE%\.gemini\config\plugins\atom` | Start Menu & Desktop `.lnk` (`Antigravity (Atom)`) |
+- **Linux:** Plugin `~/.gemini/config/plugins/atom` · Launcher `~/.local/share/applications/antigravity.desktop`
+  - Command: `curl -fsSL https://raw.githubusercontent.com/Arnav8452/atom/main/install.sh | bash`
+- **macOS:** Plugin `~/.gemini/config/plugins/atom` · Launcher `~/Applications/Antigravity (Atom).app`
+  - Command: `curl -fsSL https://raw.githubusercontent.com/Arnav8452/atom/main/install.sh | bash`
+- **Windows:** Plugin `%USERPROFILE%\.gemini\config\plugins\atom` · Shortcut `Antigravity (Atom)` (Start Menu & Desktop)
+  - Command: `irm https://raw.githubusercontent.com/Arnav8452/atom/main/install.ps1 | iex`
 
 **Environment overrides:** `ATOM_REPO`, `ATOM_DIR`, `ATOM_HOME` (default `~/.antigravity-atom`), `ANTIGRAVITY_BIN`, `ANTIGRAVITY_PLUGINS_DIR`. See [`AGENTS.md`](AGENTS.md) for full details.
 
@@ -180,15 +181,40 @@ Ready-to-use manifests live under [`packaging/`](packaging):
   - `happy`: send thanks/praise like `"thanks!"`, `"perfect!"`, or `"nice work"`.
 - **Live preview CLI & gallery** (triggers any state/mood live, or views all 19 × 3 combinations in your browser):
 
-```bash
-python3 tools/trigger_state.py --gallery              # interactive grid of all 19 states x Normal/Angry/Sad
-python3 tools/trigger_state.py typing --mood angry    # live angry-tinted + tilted-eye typing
-python3 tools/trigger_state.py thinking --mood sad    # live sad-tinted + tilted-eye thinking
-python3 tools/trigger_state.py --tour --mood angry    # cycle work states in angry mood
-python3 tools/trigger_state.py --tour-all             # cycle normal, angry work, and sad work states
-python3 tools/trigger_state.py --limit gemini-3.8-flash   # simulate 5h/weekly quota sleep
-python3 tools/trigger_state.py --clear-limit gemini-3.8-flash
-```
+  Interactive browser gallery (all 19 states × Normal/Angry/Sad):
+  ```bash
+  python3 tools/trigger_state.py --gallery
+  ```
+
+  Live angry-tinted + tilted-eye typing:
+  ```bash
+  python3 tools/trigger_state.py typing --mood angry
+  ```
+
+  Live sad-tinted + tilted-eye thinking:
+  ```bash
+  python3 tools/trigger_state.py thinking --mood sad
+  ```
+
+  Cycle work states in angry mood:
+  ```bash
+  python3 tools/trigger_state.py --tour --mood angry
+  ```
+
+  Cycle normal, angry, and sad work states:
+  ```bash
+  python3 tools/trigger_state.py --tour-all
+  ```
+
+  Simulate 5h/weekly quota sleep:
+  ```bash
+  python3 tools/trigger_state.py --limit gemini-3.8-flash
+  ```
+
+  Clear simulated quota sleep:
+  ```bash
+  python3 tools/trigger_state.py --clear-limit gemini-3.8-flash
+  ```
 
 - **Smooth transitions & dwell time.** Switches finish the current frame cleanly
   and crossfade at 60fps over `140 ms` without fast-forwarding. Busy states
