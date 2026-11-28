@@ -160,6 +160,23 @@ code.i { font: 13px var(--mono); color: var(--fg); background: var(--panel); bor
 .shots figcaption b { color: var(--fg); font-weight: 500; }
 kbd { font: 12.5px var(--mono); color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; }
 
+.gal-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; margin: 0 0 14px; }
+.gal-head .label { margin: 0; }
+.gal-tag { font-size: 14px; color: var(--dim); margin: -6px 0 16px; }
+.cell img { width: 100%; height: auto; aspect-ratio: 150 / 120; image-rendering: pixelated; display: block; border-radius: 4px; }
+.cell .dl { font: 11.5px var(--mono); color: var(--faint); text-decoration: none; justify-self: start; }
+.cell .dl:hover { color: var(--atom); }
+.artgrid { columns: 3 220px; column-gap: 16px; }
+.artgrid figure { break-inside: avoid; margin: 0 0 16px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
+.artgrid a { display: block; }
+.artgrid img { width: 100%; height: auto; display: block; }
+.artgrid figcaption { padding: 10px 12px 12px; font-size: 13.5px; color: var(--fg); display: grid; gap: 4px; }
+.badge { font: 11px var(--mono); letter-spacing: .03em; color: var(--dim); }
+.badge.ai::before { content: "✦ "; color: #a46bff; }
+.badge.fan::before { content: "♥ "; color: #ff5fb2; }
+.gal-sub { margin: 40px 0 6px; font: 600 18px var(--sans); }
+.gal-sub + p { margin: 0 0 18px; color: var(--dim); font-size: 14.5px; max-width: 62ch; }
+
 .contrib { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .card { border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 8px; align-content: start; min-width: 0; text-decoration: none; color: inherit; background: var(--panel); }
 a.card:hover { border-color: var(--faint); }
@@ -199,6 +216,7 @@ footer a { color: var(--dim); }
     <nav aria-label="Page">
       <a href="#install">install</a>
       <a href="#cli">cli</a>
+      <a href="#gallery">gallery</a>
       <a href="#contribute">contribute</a>
       <a href="https://github.com/Arnav8452/atom">github</a>
     </nav>
@@ -397,6 +415,42 @@ agy plugin uninstall atom   <span class="c"># only if you don't use desktop Atom
   </div>
 </section>
 
+<!-- ===== gallery ===== -->
+<section class="s" id="gallery">
+  <div class="wrap">
+    <h2>Gallery</h2>
+    <p class="lede">Every state of every skin as a GIF you can save and share, plus the artwork Atom grew out of.</p>
+
+    <div class="gal-head">
+      <p class="label" id="gal-count">every state, every skin</p>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Skin" id="gal-tabs"></div>
+    <p class="gal-tag" id="gal-tagline"></p>
+    <div class="grid" id="gal-states" role="tabpanel" aria-live="polite"></div>
+    <p class="note" id="gal-missing" hidden>The GIFs are built when the site is published. Run <code class="i">python3 tools/render_gallery.py --out _site/gallery</code> to preview them locally.</p>
+
+    <h3 class="gal-sub">Fan art</h3>
+    <p>Drawn Atom? We'd love to show it here, credited to you. Add it to <code class="i">art/fan/</code> with a line in <code class="i">site/gallery.json</code>, or attach it to an issue.</p>
+    <div class="artgrid" id="gal-fan"></div>
+    <div class="contrib" id="gal-fan-empty" hidden>
+      <a class="card" href="https://github.com/Arnav8452/atom/issues/new?title=Fan%20art%3A%20&amp;labels=fan-art">
+        <h3>Be the first</h3>
+        <p>Share a drawing, pixel art, a sticker or a cosplay of Atom. Tell us how you'd like to be credited.</p>
+        <span class="go">submit fan art →</span>
+      </a>
+      <a class="card" href="https://github.com/Arnav8452/atom/blob/main/CONTRIBUTING.md#fan-art">
+        <h3>Send a pull request</h3>
+        <p>Add your image to <code class="i">art/fan/</code> and an entry with your name to <code class="i">site/gallery.json</code>.</p>
+        <span class="go">how to add it →</span>
+      </a>
+    </div>
+
+    <h3 class="gal-sub">AI-generated concept art</h3>
+    <p>Atom started as AI-generated concept images, which were then redrawn pixel by pixel in code. Click any piece for the full-size original.</p>
+    <div class="artgrid" id="gal-ai"></div>
+  </div>
+</section>
+
 <!-- ===== contribute ===== -->
 <section class="s" id="contribute">
   <div class="wrap">
@@ -575,7 +629,7 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
 })();
 
 (function () {
-  var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
+  var tabs = Array.prototype.slice.call(document.querySelectorAll("#install .tab"));
   function select(t, focus) {
     tabs.forEach(function (x) {
       var on = x === t;
@@ -612,6 +666,94 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
       }
       try { navigator.clipboard.writeText(text).then(ok, fallback); } catch (e) { fallback(); }
     });
+  });
+})();
+
+(function () {
+  /* ---------- gallery (built by tools/render_gallery.py) ---------- */
+  var ORDER = ["idle", "thinking", "typing", "working", "exploring", "running", "delegating", "asking",
+    "listening", "watching", "closed", "dance", "done", "happy", "sad", "angry", "error", "canceled", "tired"];
+  var DESC = {
+    idle: "waiting for you", thinking: "the model is reasoning", typing: "editing your files",
+    working: "using a tool", exploring: "reading and searching", running: "running a command",
+    delegating: "handing work to subagents", asking: "has a question for you", listening: "you're typing",
+    watching: "background tasks still running", closed: "asleep, or out of quota", dance: "you clicked it",
+    done: "turn finished", happy: "you said thanks", sad: "you were hurtful", angry: "you swore at the agent",
+    error: "something failed", canceled: "you stopped the turn", tired: "hit the step limit"
+  };
+  var tabsEl = document.getElementById("gal-tabs"), grid = document.getElementById("gal-states");
+  var tagEl = document.getElementById("gal-tagline"), countEl = document.getElementById("gal-count");
+
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
+
+  function showSkin(skin, tabs) {
+    tabs.forEach(function (t) { var on = t.dataset.id === skin.id; t.setAttribute("aria-selected", on ? "true" : "false"); t.tabIndex = on ? 0 : -1; });
+    tagEl.textContent = skin.tagline || "";
+    grid.textContent = "";
+    var states = skin.states.slice().sort(function (a, b) {
+      var i = ORDER.indexOf(a), j = ORDER.indexOf(b); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j);
+    });
+    states.forEach(function (st) {
+      var src = "gallery/skins/" + skin.id + "/" + st + ".gif";
+      var cell = el("figure", "cell"); cell.style.margin = "0";
+      var img = el("img"); img.src = src; img.width = 300; img.height = 240; img.loading = "lazy"; img.decoding = "async";
+      img.alt = skin.name + ", " + st + (DESC[st] ? ": " + DESC[st] : "");
+      var dl = el("a", "dl", "download gif"); dl.href = src; dl.download = "atom-" + skin.id + "-" + st + ".gif";
+      cell.appendChild(img); cell.appendChild(el("b", "", st)); cell.appendChild(el("span", "", DESC[st] || "")); cell.appendChild(dl);
+      grid.appendChild(cell);
+    });
+    // Fill the last row (4 columns, or 2 on phones) so no gap shows.
+    for (var k = states.length; k % 4; k++) { var f = el("div", "cell"); f.setAttribute("aria-hidden", "true"); grid.appendChild(f); }
+  }
+
+  function artFigure(a) {
+    var fig = el("figure"), link = el("a"); link.href = a.original;
+    var img = el("img"); img.src = "gallery/" + a.src; img.width = a.w; img.height = a.h; img.loading = "lazy"; img.decoding = "async";
+    img.alt = a.title + (a.kind === "ai" ? " (AI-generated)" : a.by ? " by " + a.by : "");
+    link.appendChild(img); fig.appendChild(link);
+    var cap = el("figcaption"); cap.appendChild(el("span", "", a.title));
+    var badge = el("span", "badge " + a.kind);
+    if (a.kind === "fan") {
+      badge.textContent = "fan art" + (a.by ? " by " : "");
+      if (a.by) {
+        var who = a.link && /^https:\/\//.test(a.link) ? el("a", "", a.by) : el("span", "", a.by);
+        if (who.tagName === "A") { who.href = a.link; who.rel = "noopener nofollow"; }
+        badge.appendChild(who);
+      }
+    } else badge.textContent = "AI-generated";
+    cap.appendChild(badge); fig.appendChild(cap);
+    return fig;
+  }
+
+  fetch("gallery/gallery.json").then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (d) {
+    var skins = d.skins || [];
+    if (!skins.length) throw 0;
+    var total = skins.reduce(function (n, s) { return n + s.states.length; }, 0);
+    countEl.textContent = skins.length > 1 ? total + " GIFs · " + skins.length + " skins" : total + " GIFs";
+    var tabs = skins.map(function (s) {
+      var t = el("button", "tab", s.name); t.type = "button"; t.setAttribute("role", "tab"); t.dataset.id = s.id;
+      tabsEl.appendChild(t); return t;
+    });
+    tabs.forEach(function (t, i) {
+      t.addEventListener("click", function () { showSkin(skins[i], tabs); });
+      t.addEventListener("keydown", function (e) {
+        var k = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+        if (!k) return;
+        var n = (i + k + tabs.length) % tabs.length; showSkin(skins[n], tabs); tabs[n].focus();
+      });
+    });
+    if (skins.length < 2) tabsEl.hidden = true;
+    showSkin(skins[0], tabs);
+
+    var fan = (d.art || []).filter(function (a) { return a.kind === "fan"; });
+    var ai = (d.art || []).filter(function (a) { return a.kind !== "fan"; });
+    fan.forEach(function (a) { document.getElementById("gal-fan").appendChild(artFigure(a)); });
+    ai.forEach(function (a) { document.getElementById("gal-ai").appendChild(artFigure(a)); });
+    document.getElementById("gal-fan-empty").hidden = fan.length > 0;
+  }).catch(function () {
+    document.getElementById("gal-missing").hidden = false;
+    document.getElementById("gal-fan-empty").hidden = false;
+    tabsEl.hidden = true;
   });
 })();
 </script>

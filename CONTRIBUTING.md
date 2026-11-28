@@ -42,6 +42,24 @@ node --test tests/test_atom_inject.mjs
 - If changing sprite sheets, regenerate them with `./tools/build_assets.sh` and inspect visually.
 - Fill out the PR template clearly (and link any related issue).
 
+## Fan Art
+
+Drawn, painted or pixelled Atom? It can go in the website gallery, credited to you.
+
+1. Add the image to `art/fan/` (PNG, JPEG, WebP or GIF; animated GIFs up to 2.5 MB).
+2. Add an entry to the `art` list in `site/gallery.json`:
+
+   ```json
+   {"file": "art/fan/your-atom.png", "title": "Atom at the beach", "kind": "fan", "by": "Your Name", "link": "https://your.site"}
+   ```
+
+   `link` is optional and must start with `https://`. If you made the image with an AI tool, use `"kind": "ai"` so it's labelled honestly.
+3. Only submit work you made and are happy to share under the project's MIT license.
+
+Not comfortable with a pull request? [Open an issue](https://github.com/Arnav8452/atom/issues/new?title=Fan%20art%3A%20) with the image attached and how you'd like to be credited.
+
+Preview the gallery locally (needs Pillow): `python3 tools/render_gallery.py --out _site/gallery`, then copy `site/index.html` into `_site/` and open it.
+
 ## Security Issues
 
 Do **not** report security vulnerabilities in public issues. See [`SECURITY.md`](SECURITY.md).

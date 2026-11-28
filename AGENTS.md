@@ -31,7 +31,7 @@ This repository ships **Atom**, an open-source, stdlib-only prompt-bar mascot fo
 Always run all checks before committing:
 
 ```bash
-python3 -m py_compile atom_hook.py atom_launch.py atom_status.py atom_cli_setup.py tools/render_all.py tools/render_gemini_typing.py tools/render_idle.py tools/render_moodboard.py tools/make_sprite.py tools/trigger_state.py
+python3 -m py_compile atom_hook.py atom_launch.py atom_status.py atom_cli_setup.py tools/render_all.py tools/render_gemini_typing.py tools/render_idle.py tools/render_moodboard.py tools/make_sprite.py tools/trigger_state.py tools/render_gallery.py
 bash -n install.sh tools/build_assets.sh packaging/aur/PKGBUILD packaging/aur/antigravity-atom-git.install
 python3 -c 'import atom_launch, subprocess; s=atom_launch.build_bootstrap_script(); assert len(s) < 36000; subprocess.run(["node", "--check", "-"], input=s, text=True, check=True)'
 python3 -m unittest discover -s tests -v
@@ -42,3 +42,4 @@ node --test tests/test_atom_inject.mjs
 
 - Rebuild all 19 state sheets: `./tools/build_assets.sh` (runs `tools/render_all.py`).
 - Rebuild showcase GIF/WebP: `python3 tools/render_moodboard.py --proof /tmp/atom_moodboard_proof.png`.
+- Website gallery (every state of every skin as GIF, plus artwork listed in `site/gallery.json`): built by `tools/render_gallery.py` in the Pages workflow; never commit its output.
