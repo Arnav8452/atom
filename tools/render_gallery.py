@@ -10,11 +10,13 @@ sheets (150x120 frames). A folder's skin.json gives its name, tagline, accent
 and order; assets/atom has none and is the classic skin. Each GIF plays the
 state's loop section on the site's panel colour, scaled 2x with crisp pixels.
 
-Artwork entries whose file doesn't exist (e.g. not committed yet) are skipped.
-Originals in art/ are only read, never changed.
+Artwork ("art") and manga pages ("manga") come from art/ (originals) or
+site/art/ (web-sized copies of large pieces kept outside the repo). Entries
+whose file doesn't exist (e.g. not committed yet) are skipped. Sources are only
+read, never changed.
 
-Writes <out>/skins/<skin>/<state>.gif, <out>/art/<name>.(webp|gif) and
-<out>/gallery.json. Needs Pillow (asset tooling only; Atom itself is stdlib-only).
+Writes <out>/skins/<skin>/<state>.gif, <out>/art/<name>.(webp|gif) (a
+thumbnail plus a full-size copy) and <out>/gallery.json. Needs Pillow (asset tooling only; Atom itself is stdlib-only).
 """
 
 from __future__ import annotations
@@ -31,10 +33,11 @@ except ImportError:  # pragma: no cover - tooling dependency
     sys.exit("render_gallery.py needs Pillow: python3 -m pip install Pillow")
 
 ROOT = Path(__file__).resolve().parent.parent
-REPO_URL = "https://github.com/Arnav8452/atom/blob/main/"
+ART_ROOTS = ("art", "site/art")
 BG = (15, 22, 48)  # site --panel
 SCALE = 2
-ART_MAX = 900  # px, longest side of web copies
+THUMB_MAX = 900  # px, longest side of gallery thumbnails
+FULL_MAX = 1800  # px, longest side of the full-size view
 GIF_MAX_BYTES = 2_500_000  # animated art larger than this is skipped
 # The classic skin has no skin.json.
 DEFAULT_SKIN = {"name": "Atom", "tagline": "The classic box Atom with a rainbow crown", "accent": "#3aa2f6", "order": 0}
@@ -75,28 +78,38 @@ def state_gif(sheet: Path, meta: dict, dest: Path) -> None:
     frames[0].save(dest, save_all=True, append_images=frames[1:], duration=times, loop=0, optimize=True, disposal=1)
 
 
-def art_copy(src: Path, dest_dir: Path) -> tuple[str, int, int] | None:
+def art_copy(src: Path, dest_dir: Path, name: str) -> dict | None:
+    """Thumbnail + full-size web copies of one piece, named after `name`."""
     dest_dir.mkdir(parents=True, exist_ok=True)
     with Image.open(src) as im:
-        animated = getattr(im, "is_animated", False)
-        w, h = im.size
-        if animated:
+        if getattr(im, "is_animated", False):
             if src.stat().st_size > GIF_MAX_BYTES:
                 print(f"  skip {src.name}: animated and over {GIF_MAX_BYTES // 1_000_000} MB", file=sys.stderr)
                 return None
-            dest = dest_dir / f"{src.stem}.gif"
+            dest = dest_dir / f"{name}.gif"
             shutil.copyfile(src, dest)
-            return dest.name, w, h
+            return {"src": dest.name, "full": dest.name, "w": im.width, "h": im.height}
         im = im.convert("RGB")
-        im.thumbnail((ART_MAX, ART_MAX), Image.LANCZOS)
-        dest = dest_dir / f"{src.stem}.webp"
-        im.save(dest, "WEBP", quality=86, method=6)
-        return dest.name, im.width, im.height
+        full = im.copy()
+        full.thumbnail((FULL_MAX, FULL_MAX), Image.LANCZOS)
+        full.save(dest_dir / f"{name}.webp", "WEBP", quality=86, method=6)
+        im.thumbnail((THUMB_MAX, THUMB_MAX), Image.LANCZOS)
+        im.save(dest_dir / f"{name}.thumb.webp", "WEBP", quality=84, method=6)
+        return {"src": f"{name}.thumb.webp", "full": f"{name}.webp", "w": im.width, "h": im.height}
+
+
+def _source(src: Path, rel: str) -> Path | None:
+    if not rel:
+        return None
+    path = (src / rel).resolve()
+    if not any(path.is_relative_to((src / root).resolve()) for root in ART_ROOTS) or not path.is_file():
+        return None
+    return path
 
 
 def build(src: Path, out: Path, manifest_path: Path) -> dict:
     out.mkdir(parents=True, exist_ok=True)
-    data: dict = {"skins": [], "art": []}
+    data: dict = {"skins": [], "art": [], "manga": []}
 
     for skin_id, meta, d in skin_dirs(src / "assets"):
         states = []
@@ -113,22 +126,23 @@ def build(src: Path, out: Path, manifest_path: Path) -> dict:
         print(f"{skin_id}: {len(states)} GIFs")
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
-    for entry in manifest.get("art", []):
-        rel = entry.get("file", "")
-        path = (src / rel).resolve()
-        if not rel or not path.is_relative_to((src / "art").resolve()) or not path.is_file():
-            print(f"  skip {rel or '?'}: not found under art/", file=sys.stderr)
-            continue
-        copied = art_copy(path, out / "art")
-        if not copied:
-            continue
-        name, w, h = copied
-        data["art"].append({
-            "src": f"art/{name}", "w": w, "h": h, "original": REPO_URL + rel,
-            "title": entry.get("title", path.stem), "kind": "fan" if entry.get("kind") == "fan" else "ai",
-            "by": entry.get("by", ""), "link": entry.get("link", ""),
-        })
-    print(f"art: {len(data['art'])} pieces")
+    for section in ("art", "manga"):
+        for i, entry in enumerate(manifest.get(section, [])):
+            rel = entry.get("file", "")
+            path = _source(src, rel)
+            if not path:
+                print(f"  skip {rel or '?'}: not found under {' or '.join(ART_ROOTS)}/", file=sys.stderr)
+                continue
+            name = f"manga-{i + 1:02d}" if section == "manga" else path.stem.lower().replace("_", "-")
+            copied = art_copy(path, out / "art", name)
+            if not copied:
+                continue
+            data[section].append({
+                "src": "art/" + copied["src"], "full": "art/" + copied["full"], "w": copied["w"], "h": copied["h"],
+                "title": entry.get("title", path.stem), "kind": "fan" if entry.get("kind") == "fan" else "ai",
+                "by": entry.get("by", ""), "link": entry.get("link", ""),
+            })
+    print(f"art: {len(data['art'])} pieces, manga: {len(data['manga'])} pages")
 
     (out / "gallery.json").write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
     return data

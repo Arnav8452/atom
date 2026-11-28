@@ -1,18 +1,112 @@
 {
- "_help": "Artwork shown in the website gallery. Put the image in art/ (fan art in art/fan/), then add an entry: file, title, kind (fan or ai), and for fan art by (artist) and an optional link. tools/render_gallery.py builds the web copies when the site is published.",
+ "_help": "Artwork shown in the website gallery. Put the image in art/ (fan art in art/fan/), or a web-sized copy of a very large piece in site/art/, then add an entry: file, title, kind (fan or ai), and for fan art by (artist) and an optional link. Manga pages go in the manga list, in reading order. tools/render_gallery.py builds the web copies when the site is published.",
  "art": [
-  {"file": "art/V2.png", "title": "Atom V2, the pom-pom squishy blob", "kind": "ai"},
-  {"file": "art/chibi_idle.png", "title": "Cozy Chibi", "kind": "ai"},
-  {"file": "art/chibi_idle_2.png", "title": "Cozy Chibi, glowing", "kind": "ai"},
-  {"file": "art/chibi_states_2.png", "title": "Cozy Chibi: states and moods", "kind": "ai"},
-  {"file": "art/chibi_states_1.png", "title": "Cozy Chibi: heck, vibe, hmm, aww", "kind": "ai"},
-  {"file": "art/gemini.gif", "title": "Sparkle trails", "kind": "ai"},
-  {"file": "art/atom_idle.gif", "title": "Idle float", "kind": "ai"},
-  {"file": "art/base.gif", "title": "The original base Atom", "kind": "ai"},
-  {"file": "art/gemini_typing.gif", "title": "Typing away", "kind": "ai"},
-  {"file": "art/reactions.png", "title": "Reactions: cringe, shocked, sleepy, dizzy", "kind": "ai"},
-  {"file": "art/Angry.png", "title": "Heating up", "kind": "ai"},
-  {"file": "art/static.png", "title": "Gemini skin state sheet", "kind": "ai"},
-  {"file": "art/base.png", "title": "First prompt-bar mockup", "kind": "ai"}
+  {
+   "file": "site/art/vs-splash-ref.webp",
+   "title": "Opus 5.5 vs Neon",
+   "kind": "ai"
+  },
+  {
+   "file": "site/art/atom-ssj-3.webp",
+   "title": "Atom, powered up",
+   "kind": "ai"
+  },
+  {
+   "file": "site/art/collision-frame.webp",
+   "title": "Collision frame",
+   "kind": "ai"
+  },
+  {
+   "file": "site/art/sakuga-clawd.webp",
+   "title": "Clawd, sakuga",
+   "kind": "ai"
+  },
+  {
+   "file": "art/V2.png",
+   "title": "Atom V2, the pom-pom squishy blob",
+   "kind": "ai"
+  },
+  {
+   "file": "art/chibi_idle.png",
+   "title": "Cozy Chibi",
+   "kind": "ai"
+  },
+  {
+   "file": "art/chibi_idle_2.png",
+   "title": "Cozy Chibi, glowing",
+   "kind": "ai"
+  },
+  {
+   "file": "art/chibi_states_2.png",
+   "title": "Cozy Chibi: states and moods",
+   "kind": "ai"
+  },
+  {
+   "file": "art/chibi_states_1.png",
+   "title": "Cozy Chibi: heck, vibe, hmm, aww",
+   "kind": "ai"
+  },
+  {
+   "file": "art/gemini.gif",
+   "title": "Sparkle trails",
+   "kind": "ai"
+  },
+  {
+   "file": "art/atom_idle.gif",
+   "title": "Idle float",
+   "kind": "ai"
+  },
+  {
+   "file": "art/base.gif",
+   "title": "The original base Atom",
+   "kind": "ai"
+  },
+  {
+   "file": "art/gemini_typing.gif",
+   "title": "Typing away",
+   "kind": "ai"
+  },
+  {
+   "file": "art/reactions.png",
+   "title": "Reactions: cringe, shocked, sleepy, dizzy",
+   "kind": "ai"
+  },
+  {
+   "file": "art/Angry.png",
+   "title": "Heating up",
+   "kind": "ai"
+  },
+  {
+   "file": "art/static.png",
+   "title": "Gemini skin state sheet",
+   "kind": "ai"
+  },
+  {
+   "file": "art/base.png",
+   "title": "First prompt-bar mockup",
+   "kind": "ai"
+  }
+ ],
+ "manga": [
+  {
+   "file": "site/art/manga/page-09.webp",
+   "title": "Shing-shing-shing!",
+   "kind": "ai"
+  },
+  {
+   "file": "site/art/manga/page-10.webp",
+   "title": "KRA-KOOOM!! Ultracode on",
+   "kind": "ai"
+  },
+  {
+   "file": "site/art/manga/page-11.webp",
+   "title": "Domain: War-Frame",
+   "kind": "ai"
+  },
+  {
+   "file": "site/art/manga/page-12.webp",
+   "title": "Decoy",
+   "kind": "ai"
+  }
  ]
 }

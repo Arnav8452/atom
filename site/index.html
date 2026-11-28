@@ -174,6 +174,21 @@ kbd { font: 12.5px var(--mono); color: var(--fg); background: var(--panel); bord
 .badge { font: 11px var(--mono); letter-spacing: .03em; color: var(--dim); }
 .badge.ai::before { content: "✦ "; color: #a46bff; }
 .badge.fan::before { content: "♥ "; color: #ff5fb2; }
+.manga { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.manga figure { margin: 0; display: grid; gap: 6px; }
+.manga a { display: block; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #fff; }
+.manga a:hover { border-color: var(--faint); }
+.manga img { width: 100%; height: auto; display: block; }
+.manga figcaption { font: 12px var(--mono); color: var(--dim); }
+.viewer { border: 0; padding: 0; background: transparent; max-width: 100vw; max-height: 100vh; width: 100vw; height: 100vh; }
+.viewer::backdrop { background: rgba(5, 8, 18, .94); }
+.viewer[open] { display: grid; grid-template-rows: 1fr auto; place-items: center; }
+.viewer img { max-width: calc(100vw - 32px); max-height: calc(100vh - 72px); width: auto; height: auto; display: block; }
+.viewer .bar2 { display: flex; gap: 12px; align-items: center; padding: 10px 16px 16px; font: 13px var(--mono); color: var(--dim); }
+.viewer button { font: 13px var(--mono); color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+.viewer button:hover { border-color: var(--faint); }
+.viewer button[disabled] { opacity: .35; cursor: default; }
+@media (max-width: 720px) { .manga { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .gal-sub { margin: 40px 0 6px; font: 600 18px var(--sans); }
 .gal-sub + p { margin: 0 0 18px; color: var(--dim); font-size: 14.5px; max-width: 62ch; }
 
@@ -419,7 +434,7 @@ agy plugin uninstall atom   <span class="c"># only if you don't use desktop Atom
 <section class="s" id="gallery">
   <div class="wrap">
     <h2>Gallery</h2>
-    <p class="lede">Every state of every skin as a GIF you can save and share, plus the artwork Atom grew out of.</p>
+    <p class="lede">Every state of every skin as a GIF you can save and share, a manga, and the artwork Atom grew out of.</p>
 
     <div class="gal-head">
       <p class="label" id="gal-count">every state, every skin</p>
@@ -428,6 +443,12 @@ agy plugin uninstall atom   <span class="c"># only if you don't use desktop Atom
     <p class="gal-tag" id="gal-tagline"></p>
     <div class="grid" id="gal-states" role="tabpanel" aria-live="polite"></div>
     <p class="note" id="gal-missing" hidden>The GIFs are built when the site is published. Run <code class="i">python3 tools/render_gallery.py --out _site/gallery</code> to preview them locally.</p>
+
+    <div id="gal-manga-wrap" hidden>
+      <h3 class="gal-sub">Manga: Atom vs Clawd</h3>
+      <p>Quota bars down, ULTRACODE on. Click a page to read it full size, then use the arrow keys to turn pages. (AI-generated.)</p>
+      <div class="manga" id="gal-manga"></div>
+    </div>
 
     <h3 class="gal-sub">Fan art</h3>
     <p>Drawn Atom? We'd love to show it here, credited to you. Add it to <code class="i">art/fan/</code> with a line in <code class="i">site/gallery.json</code>, or attach it to an issue.</p>
@@ -446,10 +467,20 @@ agy plugin uninstall atom   <span class="c"># only if you don't use desktop Atom
     </div>
 
     <h3 class="gal-sub">AI-generated concept art</h3>
-    <p>Atom started as AI-generated concept images, which were then redrawn pixel by pixel in code. Click any piece for the full-size original.</p>
+    <p>Atom started as AI-generated concept images, which were then redrawn pixel by pixel in code. Click any piece to see it full size.</p>
     <div class="artgrid" id="gal-ai"></div>
   </div>
 </section>
+
+<dialog class="viewer" id="viewer" aria-label="Artwork viewer">
+  <img id="viewer-img" alt="">
+  <div class="bar2">
+    <button type="button" id="viewer-prev" aria-label="Previous">←</button>
+    <span id="viewer-cap"></span>
+    <button type="button" id="viewer-next" aria-label="Next">→</button>
+    <button type="button" id="viewer-close">close</button>
+  </div>
+</dialog>
 
 <!-- ===== contribute ===== -->
 <section class="s" id="contribute">
@@ -706,8 +737,32 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
     for (var k = states.length; k % 4; k++) { var f = el("div", "cell"); f.setAttribute("aria-hidden", "true"); grid.appendChild(f); }
   }
 
-  function artFigure(a) {
-    var fig = el("figure"), link = el("a"); link.href = a.original;
+  /* full-size viewer: one list per group (manga pages, AI art, fan art) */
+  var viewer = document.getElementById("viewer"), vImg = document.getElementById("viewer-img");
+  var vCap = document.getElementById("viewer-cap"), vPrev = document.getElementById("viewer-prev"), vNext = document.getElementById("viewer-next");
+  var vList = [], vAt = 0;
+  function vShow(i) {
+    vAt = i; var a = vList[i];
+    vImg.src = "gallery/" + a.full; vImg.alt = a.title;
+    vCap.textContent = a.title + (vList.length > 1 ? "  ·  " + (i + 1) + " / " + vList.length : "");
+    vPrev.disabled = i === 0; vNext.disabled = i === vList.length - 1;
+  }
+  function vOpen(list, i, e) {
+    if (!viewer.showModal) return; // very old browsers: follow the link instead
+    e.preventDefault(); vList = list; vShow(i); viewer.showModal();
+  }
+  vPrev.addEventListener("click", function () { if (vAt > 0) vShow(vAt - 1); });
+  vNext.addEventListener("click", function () { if (vAt < vList.length - 1) vShow(vAt + 1); });
+  document.getElementById("viewer-close").addEventListener("click", function () { viewer.close(); });
+  viewer.addEventListener("click", function (e) { if (e.target === viewer) viewer.close(); });
+  viewer.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowRight" && vAt < vList.length - 1) vShow(vAt + 1);
+    if (e.key === "ArrowLeft" && vAt > 0) vShow(vAt - 1);
+  });
+
+  function artFigure(a, list, i) {
+    var fig = el("figure"), link = el("a"); link.href = "gallery/" + a.full;
+    link.addEventListener("click", function (e) { vOpen(list, i, e); });
     var img = el("img"); img.src = "gallery/" + a.src; img.width = a.w; img.height = a.h; img.loading = "lazy"; img.decoding = "async";
     img.alt = a.title + (a.kind === "ai" ? " (AI-generated)" : a.by ? " by " + a.by : "");
     link.appendChild(img); fig.appendChild(link);
@@ -747,8 +802,18 @@ node --test tests/test_atom_inject.mjs</pre><button class="copy" type="button">c
 
     var fan = (d.art || []).filter(function (a) { return a.kind === "fan"; });
     var ai = (d.art || []).filter(function (a) { return a.kind !== "fan"; });
-    fan.forEach(function (a) { document.getElementById("gal-fan").appendChild(artFigure(a)); });
-    ai.forEach(function (a) { document.getElementById("gal-ai").appendChild(artFigure(a)); });
+    fan.forEach(function (a, i) { document.getElementById("gal-fan").appendChild(artFigure(a, fan, i)); });
+    ai.forEach(function (a, i) { document.getElementById("gal-ai").appendChild(artFigure(a, ai, i)); });
+    var pages = d.manga || [], mangaEl = document.getElementById("gal-manga");
+    pages.forEach(function (a, i) {
+      var fig = el("figure"), link = el("a"); link.href = "gallery/" + a.full;
+      link.addEventListener("click", function (e) { vOpen(pages, i, e); });
+      var img = el("img"); img.src = "gallery/" + a.src; img.width = a.w; img.height = a.h; img.loading = "lazy"; img.decoding = "async";
+      img.alt = "Manga page: " + a.title;
+      link.appendChild(img); fig.appendChild(link);
+      fig.appendChild(el("figcaption", "", a.title)); mangaEl.appendChild(fig);
+    });
+    document.getElementById("gal-manga-wrap").hidden = !pages.length;
     document.getElementById("gal-fan-empty").hidden = fan.length > 0;
   }).catch(function () {
     document.getElementById("gal-missing").hidden = false;
