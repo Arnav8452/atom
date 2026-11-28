@@ -39,7 +39,10 @@ jobs:
         run: |
           mkdir -p _site/sprites _site/cli
           cp site/index.html _site/
-          cp assets/atom/*.webp _site/sprites/
+          # Site sprites: Atom V2 (the default skin) when present, else the classic Atom
+          src=assets/v2; [ -f "$src/idle.webp" ] || src=assets/atom
+          cp "$src"/*.webp "$src"/*.json _site/sprites/
+          rm -f _site/sprites/skin.json
           cp assets/moodboard.gif _site/
           cp assets/screenshots/cli-*.png _site/cli/
       - uses: actions/configure-pages@v6
