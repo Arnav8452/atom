@@ -24,6 +24,11 @@ Usage:
   atom_status.py                     read the payload on stdin (what agy does)
   atom_status.py --style bar         one line that replaces agy's status line:
                                      its mode/model on the left, Atom at the end
+  atom_status.py --style big         agy's mode/model line with the pixel Atom
+                                     under it
+  atom_status.py --style switch      big or bar, whichever was picked last:
+  atom_status.py --toggle            switch between them (atom-toggle runs this)
+  atom_status.py --view big|bar      pick one
   atom_status.py --style line        always a single line
   atom_status.py --color 256         for terminals without truecolor
   atom_status.py --skin atom         another skin: v2 (default), atom, chibi,
@@ -99,7 +104,6 @@ SKINS = {
             "..BBBBBBBBBBBB..",
             "...BBBBBBBBBB...",
             "....BBBBBBBB....",
-            "....DD....DD....",
         ),
         "palette": {"B": (40, 186, 248), "D": (32, 108, 168), "K": (32, 108, 168), "P": (100, 248, 255)},
         "body": "BD",
@@ -613,6 +617,40 @@ def _truncate(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: max(0, limit - 1)] + "…"
 
 
+def _agy_left(bar_info: tuple[str, str], room: int, mode: str) -> str:
+    """agy's "auto · Model · effort", cut to `room` columns: mode coloured
+    like agy does, the rest dim."""
+    agy_mode, _ = bar_info
+    text = _truncate(" · ".join(p for p in bar_info if p), room)
+    if not text:
+        return ""
+    if mode == "none":
+        return text
+    if agy_mode and text.startswith(agy_mode):
+        return f"{fg((250, 170, 80), mode)}{agy_mode}{RESET}\x1b[2m{text[len(agy_mode):]}{RESET}"
+    return f"\x1b[2m{text}{RESET}"
+
+
+# --- big/bar view switch ----------------------------------------------------
+VIEWS = ("bar", "big")
+DEFAULT_VIEW = "bar"
+
+
+def _view_path(home: str) -> str:
+    return os.path.join(home, "cli", "view.json")
+
+
+def read_view(home: str | None = None) -> str:
+    view = _read_json(_view_path(home or HOME)).get("view")
+    return view if view in VIEWS else DEFAULT_VIEW
+
+
+def set_view(view: str, home: str | None = None) -> str:
+    view = view if view in VIEWS else DEFAULT_VIEW
+    _write_json(_view_path(home or HOME), {"view": view})
+    return view
+
+
 def render(
     info: dict,
     width: int,
@@ -633,6 +671,16 @@ def render(
     dim = "" if mode == "none" else "\x1b[2m"
     reset = "" if mode == "none" else RESET
 
+    if style == "switch":
+        style = read_view()
+    if style == "big":
+        # agy's mode/model line, then the pixel Atom under it.
+        if mode == "none" or width < SPRITE_MIN_WIDTH:
+            style = "bar"
+        else:
+            agy_line = _agy_left(bar_info, max(10, width - BAR_MARGIN), mode)
+            sprite = render(info, width, "sprite", mode, skin)
+            return (agy_line + "\n" + sprite) if agy_line else sprite
     if style == "auto":
         style = "sprite" if width >= SPRITE_MIN_WIDTH else "line"
     if mode == "none" and style == "sprite":
@@ -652,21 +700,10 @@ def render(
         # Label first, so the face stays pinned to the end of the line.
         right = f"{fg(colour, mode)}{label}{reset} {head}"
         with_detail = (f"{dim}{detail} ·{reset} " if detail else "") + right
-        agy_mode, model = bar_info
-        left_plain = " · ".join(p for p in (agy_mode, model) if p)
+        left_plain = " · ".join(p for p in bar_info if p)
         if visible_len(with_detail) + len(left_plain) + 2 <= avail:
             right = with_detail
-        room = avail - visible_len(right) - 2
-        left_plain = _truncate(left_plain, room)
-        if left_plain:
-            # Colour the mode like agy does, dim the rest.
-            if agy_mode and left_plain.startswith(agy_mode):
-                rest = left_plain[len(agy_mode):]
-                left = f"{fg((250, 170, 80), mode)}{agy_mode}{reset}{dim}{rest}{reset}"
-            else:
-                left = f"{dim}{left_plain}{reset}"
-        else:
-            left = ""
+        left = _agy_left(bar_info, avail - visible_len(right) - 2, mode)
         gap = max(1, avail - visible_len(left) - visible_len(right))
         return left + " " * gap + right
 
@@ -695,21 +732,21 @@ def render(
 # --- entry point ------------------------------------------------------------
 
 def _parse_args(argv: list[str]) -> dict:
-    opts = {"style": "auto", "color": "", "skin": "", "demo": False}
+    opts = {"style": "auto", "color": "", "skin": "", "demo": False, "toggle": False, "view": ""}
     it = iter(argv)
     for arg in it:
-        if arg == "--demo":
-            opts["demo"] = True
-        elif arg in ("--style", "--color", "--skin"):
+        if arg in ("--demo", "--toggle"):
+            opts[arg[2:]] = True
+        elif arg in ("--style", "--color", "--skin", "--view"):
             opts[arg[2:]] = next(it, "")
-        elif arg.startswith(("--style=", "--color=", "--skin=")):
+        elif arg.startswith(("--style=", "--color=", "--skin=", "--view=")):
             key, value = arg[2:].split("=", 1)
             opts[key] = value
     if opts["skin"] not in SKINS and not (opts["demo"] and opts["skin"] == "all"):
         opts["skin"] = os.environ.get("ATOM_SKIN", "")
         if opts["skin"] not in SKINS:
             opts["skin"] = DEFAULT_SKIN
-    if opts["style"] not in ("auto", "sprite", "line", "bar"):
+    if opts["style"] not in ("auto", "sprite", "line", "bar", "big", "switch"):
         opts["style"] = "auto"
     if opts["color"] not in ("truecolor", "256", "none"):
         opts["color"] = os.environ.get("ATOM_COLOR", "") or "truecolor"
@@ -745,6 +782,14 @@ def demo(opts: dict) -> str:
 
 def main(argv: list[str] | None = None) -> None:
     opts = _parse_args(sys.argv[1:] if argv is None else argv)
+    if opts["toggle"] or opts["view"]:
+        # Run by you (e.g. `! atom-toggle` inside agy), not by the CLI.
+        if opts["view"] in VIEWS:
+            view = set_view(opts["view"])
+        else:
+            view = set_view("big" if read_view() == "bar" else "bar")
+        sys.stdout.write(f"Atom: {view} view. It shows the next time agy redraws its status line.\n")
+        return
     if opts["demo"]:
         sys.stdout.write(demo(opts) + "\n")
         return

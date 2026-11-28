@@ -3,7 +3,14 @@
 Atom can live in [Antigravity CLI](https://antigravity.google/docs/cli/statusline/) (`agy`) as a
 custom status line. By default Atom shares the CLI's status line: the CLI's mode and
 model info on the left, a small Atom face at the end of the line that reacts to what the
-agent is doing. No extra lines are used. Run `python3 atom_status.py --demo` to see every state.
+agent is doing. No extra lines are used. Type `! atom-toggle` in the CLI to switch to the
+big pixel Atom and back.
+
+```
+bar:  auto · Gemini 4 Neon · high                          thinking… ▐▀ ▀▌
+big:  auto · Gemini 4 Neon · high
+      (7-line pixel Atom V2)   Atom · thinking…
+``` Run `python3 atom_status.py --demo` to see every state.
 
 ## Stays within Antigravity's terms
 
@@ -39,12 +46,28 @@ never stores the status line's `email`, title, paths or prompts. (The desktop ov
    ```json
    "statusLine": {
      "type": "command",
-     "command": "python3 -S -I /path/to/atom/atom_status.py --style bar",
+     "command": "python3 -S -I /path/to/atom/atom_status.py --style switch",
      "stack_with_default": false
    }
    ```
 
+   It also writes a small `atom-toggle` command to `~/.local/bin` (`--bin DIR` to put it
+   elsewhere). It never overwrites another program with that name.
+
 3. Restart `agy`.
+
+## Switching between the bar and the big Atom
+
+Inside `agy`, type:
+
+```
+! atom-toggle
+```
+
+`!` runs the command on your machine without involving the model, so it uses no quota.
+The new view appears the next time `agy` redraws its status line, which happens when the
+agent state changes. (A status line can't receive mouse clicks, so it can't toggle on click.)
+`atom_status.py --view big` or `--view bar` sets a view directly.
 
 Turn it off with `python3 atom_cli_setup.py --uninstall`, or in the CLI with
 `/statusline disable`.
@@ -53,8 +76,10 @@ Turn it off with `python3 atom_cli_setup.py --uninstall`, or in the CLI with
 
 | Option | |
 |---|---|
-| `--style bar` | (default) one line in place of the CLI's own, `auto · Gemini 4 Neon · high      thinking… ▐▀ ▀▌`. The CLI's mode, agent, model and effort are rebuilt from the payload. Its other built-in extras on that line (thinking timers, tips, quota warnings) don't show. |
-| `--skin v2` | Atom V2: round blob with a rainbow beanie and pom-pom (default) |
+| `--style switch` | (default) the bar or the big view, whichever `atom-toggle` picked last (starts as the bar) |
+| `--style big` | always the big view: the CLI's info line, then the pixel Atom |
+| `--style bar` | always one line in place of the CLI's own, `auto · Gemini 4 Neon · high      thinking… ▐▀ ▀▌`. The CLI's mode, agent, model and effort are rebuilt from the payload. Its other built-in extras on that line (thinking timers, tips, quota warnings) don't show. |
+| `--skin v2` | Atom V2: round, leg-free blob with a rainbow beanie and pom-pom (default) |
 | `--skin atom` / `--skin chibi` / `--skin base-qt` | the classic box Atom / Cozy Chibi / base qt. (`ATOM_SKIN` works too) |
 | `--style auto` | stacked under the CLI's line: pixel Atom at 50+ columns, one line below that |
 | `--style sprite` / `--style line` | stacked: always the pixel Atom / always one line |

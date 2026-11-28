@@ -241,6 +241,36 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(atom_status.agy_info(payload), ("auto · reviewer", "x-model"))
         self.assertEqual(atom_status.agy_info({"model": None, "agent": "bad"}), ("auto", ""))
 
+    def test_v2_has_no_legs(self) -> None:
+        bottom = atom_status.SKINS["v2"]["grid"][-1]
+        self.assertEqual(bottom.strip("."), "B" * len(bottom.strip(".")))  # one solid round bottom
+
+    def test_big_view_is_agy_line_plus_sprite(self) -> None:
+        info = {"state": "thinking", "mood": None, "detail": ""}
+        out = plain(atom_status.render(info, 100, "big", "truecolor", "v2", self.BAR)).split("\n")
+        self.assertEqual(out[0], "auto · Gemini 4 Neon · high")
+        self.assertEqual(len(out), 8)
+        self.assertTrue(any("Atom · thinking…" in line for line in out))
+        # Too narrow or no colour: falls back to the bar.
+        self.assertEqual(len(atom_status.render(info, 40, "big", "truecolor", "v2", self.BAR).split("\n")), 1)
+        self.assertEqual(len(atom_status.render(info, 100, "big", "none", "v2", self.BAR).split("\n")), 1)
+
+    def test_switch_follows_the_view_file(self) -> None:
+        info = {"state": "idle", "mood": None, "detail": ""}
+        with tempfile.TemporaryDirectory() as tmp:
+            old = atom_status.HOME
+            atom_status.HOME = tmp
+            try:
+                self.assertEqual(atom_status.read_view(), "bar")
+                args = (info, 100, "switch", "truecolor", "v2", self.BAR)
+                self.assertEqual(len(atom_status.render(*args).split("\n")), 1)
+                atom_status.set_view("big")
+                self.assertEqual(len(atom_status.render(*args).split("\n")), 8)
+                atom_status.set_view("nonsense")
+                self.assertEqual(atom_status.read_view(), "bar")
+            finally:
+                atom_status.HOME = old
+
     def test_v2_is_the_default_skin(self) -> None:
         self.assertEqual(atom_status.DEFAULT_SKIN, "v2")
         info = {"state": "idle", "mood": None, "detail": ""}
@@ -252,7 +282,7 @@ class RenderTests(unittest.TestCase):
 
     def test_sprite_heights(self) -> None:
         info = {"state": "idle", "mood": None, "detail": ""}
-        for skin, lines in (("v2", 7), ("atom", 5), ("chibi", 7), ("base-qt", 4)):
+        for skin, lines in (("v2", 7), ("atom", 5), ("chibi", 7), ("base-qt", 4)):  # v2 is 13 px, no legs
             out = atom_status.render(info, 120, "sprite", "truecolor", skin)
             self.assertEqual(len(out.split("\n")), lines, skin)
 
@@ -367,6 +397,18 @@ class ProcessTests(unittest.TestCase):
         self.assertIn("needs your OK", proc.stdout)
         self.assertIn("Atom V2", proc.stdout)
 
+    def test_toggle_flips_and_prints(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            first = self.run_status("", "--toggle", home=home)
+            self.assertEqual(first.returncode, 0)
+            self.assertIn("big view", first.stdout)
+            self.assertIn("bar view", self.run_status("", "--toggle", home=home).stdout)
+            self.assertIn("big view", self.run_status("", "--view", "big", home=home).stdout)
+            self.assertIn("big view", self.run_status("", "--view", "big", home=home).stdout)
+            payload = json.dumps({"agent_state": "idle", "terminal_width": 100})
+            out = self.run_status(payload, "--style", "switch", home=home).stdout
+            self.assertGreater(len(out.strip().split("\n")), 1)
+
     def test_demo_all_skins(self) -> None:
         proc = self.run_status("", "--demo", "--skin", "all")
         self.assertEqual(proc.returncode, 0)
@@ -378,6 +420,7 @@ class SetupTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.settings = os.path.join(self.tmp.name, "agy", "settings.json")
+        self.bin = os.path.join(self.tmp.name, "bin")
         self.old_home = os.environ.get("ATOM_HOME")
         os.environ["ATOM_HOME"] = os.path.join(self.tmp.name, "atom")
 
@@ -403,7 +446,7 @@ class SetupTests(unittest.TestCase):
             old_out, old_err = sys.stdout, sys.stderr
             sys.stdout = sys.stderr = null
             try:
-                return atom_cli_setup.main(["--settings", self.settings, *args])
+                return atom_cli_setup.main(["--settings", self.settings, "--bin", self.bin, *args])
             finally:
                 sys.stdout, sys.stderr = old_out, old_err
 
@@ -411,10 +454,36 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(self.setup(), 0)
         block = self.read()["statusLine"]
         self.assertEqual(block["type"], "command")
-        self.assertFalse(block["stack_with_default"])  # bar replaces agy's line
-        self.assertIn("--style bar", block["command"])
+        self.assertFalse(block["stack_with_default"])  # switch replaces agy's line
+        self.assertIn("--style switch", block["command"])
         self.assertIn("atom_status.py", block["command"])
         self.assertIn("-S -I", block["command"])
+
+    def test_install_writes_toggle_and_uninstall_removes_it(self) -> None:
+        toggle = os.path.join(self.bin, "atom-toggle")
+        self.assertEqual(self.setup(), 0)
+        self.assertTrue(os.access(toggle, os.X_OK))
+        with open(toggle, encoding="utf-8") as fh:
+            body = fh.read()
+        self.assertIn("atom_status.py", body)
+        self.assertIn("--toggle", body)
+        self.assertEqual(self.setup("--uninstall"), 0)
+        self.assertFalse(os.path.exists(toggle))
+
+    def test_toggle_never_overwrites_someone_elses_command(self) -> None:
+        os.makedirs(self.bin)
+        toggle = os.path.join(self.bin, "atom-toggle")
+        with open(toggle, "w", encoding="utf-8") as fh:
+            fh.write("#!/bin/sh\necho mine\n")
+        self.assertEqual(self.setup(), 0)
+        self.assertEqual(self.setup("--uninstall"), 0)
+        with open(toggle, encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "#!/bin/sh\necho mine\n")
+
+    def test_fixed_styles_skip_the_toggle(self) -> None:
+        self.assertEqual(self.setup("--style", "bar"), 0)
+        self.assertFalse(self.read()["statusLine"]["stack_with_default"])
+        self.assertFalse(os.path.exists(os.path.join(self.bin, "atom-toggle")))
 
     def test_install_keeps_other_settings_and_bom(self) -> None:
         self.write({"model": "x", "nested": {"a": 1}}, bom=True)
