@@ -1,67 +1,65 @@
-# Atom — a prompt-bar mascot for Antigravity
+﻿<div align="center">
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/Arnav8452/atom/actions/workflows/ci.yml/badge.svg)](https://github.com/Arnav8452/atom/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/Arnav8452/atom/actions/workflows/codeql.yml/badge.svg)](https://github.com/Arnav8452/atom/actions/workflows/codeql.yml)
-![Python 3 stdlib](https://img.shields.io/badge/Python-3%20stdlib--only-3776AB?logo=python&logoColor=white)
+# Atom - a prompt-bar mascot for Antigravity
 
-![Atom Mood Board](assets/moodboard.gif)
+<p align="center">
+  <img src="https://img.shields.io/github/stars/Arnav8452/atom?style=flat&logo=github" alt="GitHub stars" height="20">
+  <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" height="20">
+  <img src="https://github.com/Arnav8452/atom/actions/workflows/ci.yml/badge.svg" alt="CI" height="20">
+  <img src="https://github.com/Arnav8452/atom/actions/workflows/codeql.yml/badge.svg" alt="CodeQL" height="20">
+  <img src="https://img.shields.io/badge/Python-3%20stdlib--only-3776AB?logo=python&logoColor=white" alt="Python 3 stdlib" height="20">
+  <img src="https://img.shields.io/badge/OS-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey" alt="Platforms" height="20">
+</p>
 
-A tiny open-source pixel companion that stands on the prompt bar inside the
-**Antigravity desktop app** and reacts in real time to what the agent is doing
-— reasoning, editing code, running commands, exploring files, delegating
-subagents, sleeping on quota limits, or reacting to your tone.
+<br>
 
-- **19 code-generated animated states:** every state (`idle`, `thinking`,
-  `typing`, `working`, `exploring`, `running`, `delegating`, `asking`,
-  `listening`, `watching`, `closed`, `dance`, `done`, `happy`, `sad`, `angry`,
-  `error`, `canceled`, `tired`) is rendered programmatically onto transparent
-  32-bit RGBA sprite sheets (`150×120` lossless WebP) sharing `base.gif`'s
-  clean pixel silhouette and scrolling Gemini rainbow beanie.
-- **Silky transitions without stutter:** switches use direct `requestAnimationFrame`
-  60fps `140 ms` crossfades (no fast-forward rushing), while busy work states
-  stay visible for at least `1.2 s` so rapid tool steps don't flicker past.
-- **Sustained turn moods (`angry` & `sad`):** insults, profanity, or
-  all-caps frustration tint Atom red (or muted blue for sadness) with tilted
-  `\ /` or `/ \` eyes across *every* working animation until the response
-  completes.
-- **Per-model quota sleep & instant wake-up:** goes to sleep (`closed` with rising
-  `Zzz`) when the active model reaches its 5-hour or weekly quota limit, and
-  wakes immediately when you switch to a model with available quota.
-- **Click to dance:** click Atom's body anytime (when calm and awake) to trigger
-  its groovy `dance` animation (`Alt+click` switches between the left and right
-  sides of the prompt bar; `Shift+click` switches skins if more than one
-  folder exists under `assets/`).
-- **Size follows the bar:** scales to 9% of the prompt bar's width (72–132 px)
-  and tracks sidebar collapse/resize transitions automatically.
+<img src="assets/moodboard.gif" alt="Atom Mood Board" width="760">
 
-## How it works
+<br>
+<br>
 
-```
-Antigravity agent ──hooks.json──▶ atom_hook.py ──▶ ~/.antigravity-atom/*.json
-                                                          │
-atom_launch.py ──starts──▶ Antigravity app                ▼
-      └── DevTools CDP ──▶ main window: atom_inject.js ◀─ state + mood + limits
-```
+<p align="center">A tiny, zero-dependency pixel companion that sits on the prompt bar in the <strong>Antigravity desktop app</strong> and reacts in real time to what the agent is doing.</p>
 
-- **Hooks** (`plugin.json` + `hooks.json`, an Antigravity plugin): runs
-  `python3 -S -I ./atom_hook.py <Event>` on all 6 lifecycle events (`SessionStart`,
-  `PreInvocation`, `PreToolUse`, `PostToolUse`, `PostInvocation`, `Stop`),
-  writes per-conversation state/mood/limit JSON, and wakes the launcher
-  immediately via `notify.sock` (Linux/macOS) or loopback UDP `notify.port` (Windows).
-- **In-app rendering:** `atom_launch.py` launches Antigravity with
-  `--remote-debugging-pipe` on Linux/macOS (or loopback `--remote-debugging-port`
-  over a stdlib WebSocket client on Windows), injects the lightweight (<35 KB)
-  `atom_inject.js` bootstrap, and streams per-state sprites lazily via
-  `__loadState` only into localhost pages that mount `[data-testid="agent-input-box"]`.
+</div>
+
+- **19 animated states:** Code-generated `150×120` lossless WebP sprite sheets with 60fps `140 ms` crossfades and a `1.2 s` minimum dwell so rapid tool steps don't flicker.
+- **Sustained moods (`angry` & `sad`):** Frustration or insults tint Atom red/blue with tilted `\ /` or `/ \` eyes across every working animation until the reply finishes.
+- **Quota sleep & wake:** Sleeps (`Zzz`) when the active model hits its 5-hour or weekly quota limit, and wakes immediately when you switch models.
+- **Responsive sizing:** Scales to 9% of the prompt bar width (72–132 px) and tracks sidebar/layout changes automatically.
+
+### Quick Controls
+
+| Action | What it does |
+| ------ | ------------ |
+| **Click** | Makes Atom **dance** (when calm and awake) |
+| **`Alt + Click`** | Moves Atom between the **left** and **right** side of the prompt bar |
+| **`Shift + Click`** | Switches skins (when multiple folders exist in `assets/`) |
+
+## Contents
+
+- [Install & Download](#install--download)
+- [States (19 code-generated states)](#states-19-code-generated-states)
+- [How it works](#how-it-works)
+- [Project Layout](#project-layout)
+- [Adding art](#adding-art)
+- [Security & Privacy](#security--privacy)
+- [Contributing & Community](#contributing--community)
+- [Tests](#tests)
 
 ## Install & Download
 
 **Runtime requirements:** Python 3 only (zero pip dependencies; `git` optional if downloading a release zip).
 
-### For AI Agents (Quick Install)
+### Easy Install (Paste into Antigravity)
 
-If you are an AI coding agent installing Atom into a user's Antigravity setup, pick the row matching the host OS, run the command once, verify, and instruct the user to quit and reopen Antigravity:
+Want Antigravity to set it up for you? Copy this prompt and paste it into chat:
+
+```text
+Install https://github.com/Arnav8452/atom for my OS, verify hooks.json, and tell me when to restart Antigravity.
+```
+
+> [!TIP]
+> Make sure Antigravity is **fully quit** before launching the Atom shortcut - on **Windows/Linux** check the system tray, and on **macOS** press `Cmd+Q` (or Quit from the Dock) instead of just closing the window.
 
 | Platform | Single-step Install Command | Plugin Path Created | Launcher Created |
 | -------- | --------------------------- | ------------------- | ---------------- |
@@ -69,8 +67,7 @@ If you are an AI coding agent installing Atom into a user's Antigravity setup, p
 | **macOS** | `curl -fsSL https://raw.githubusercontent.com/Arnav8452/atom/main/install.sh \| bash` | `~/.gemini/config/plugins/atom` | `~/Applications/Antigravity (Atom).app` |
 | **Windows** | `irm https://raw.githubusercontent.com/Arnav8452/atom/main/install.ps1 \| iex` | `%USERPROFILE%\.gemini\config\plugins\atom` | Start Menu & Desktop `.lnk` (`Antigravity (Atom)`) |
 
-**Environment overrides:** `ATOM_REPO` (custom git remote), `ATOM_DIR` (install checkout path), `ATOM_HOME` (runtime state dir, default `~/.antigravity-atom`), `ANTIGRAVITY_BIN` (custom Antigravity executable; on Linux the launcher otherwise checks the usual install paths, `PATH`, other `antigravity*.desktop` launchers, and `Antigravity*/` folders extracted into `/opt`, `~/.local/share`, `~/Applications`, `~/Apps`, `~/Downloads`, `~` and similar), `ANTIGRAVITY_PLUGINS_DIR` (custom plugins dir).
-**Post-install check:** confirm `hooks.json` exists inside the plugin path above, then quit Antigravity completely and launch via the newly installed entry (or `python3 atom_launch.py`). See [`AGENTS.md`](AGENTS.md) for full contributor & automation details.
+**Environment overrides:** `ATOM_REPO`, `ATOM_DIR`, `ATOM_HOME` (default `~/.antigravity-atom`), `ANTIGRAVITY_BIN`, `ANTIGRAVITY_PLUGINS_DIR`. See [`AGENTS.md`](AGENTS.md) for full details.
 
 ---
 
@@ -90,7 +87,12 @@ irm https://raw.githubusercontent.com/Arnav8452/atom/main/install.ps1 | iex
 
 *(Prefer to inspect before running? Download `install.sh` / `install.ps1`, review it, then execute `./install.sh` or `.\install.ps1`.)*
 
-### Option 2: Git clone & local install
+<br>
+
+<details>
+<summary>Other install methods (Git clone, ZIP, Portable, AUR, Homebrew, Scoop, Winget)</summary>
+
+### Git clone & local install
 
 ```bash
 git clone https://github.com/Arnav8452/atom.git atom && cd atom
@@ -111,7 +113,7 @@ git clone https://github.com/Arnav8452/atom.git atom; cd atom
 
 ### Option 4: Zero-install portable run
 
-From any clone or extracted archive, run the launcher directly — `atom_launch.py` automatically links/copies the hooks plugin into `~/.gemini/config/plugins/atom` on first start:
+From any clone or extracted archive, run the launcher directly - `atom_launch.py` automatically links/copies the hooks plugin into `~/.gemini/config/plugins/atom` on first start:
 
 ```bash
 python3 atom_launch.py
@@ -136,12 +138,14 @@ Ready-to-use manifests live under [`packaging/`](packaging):
   ```
 - **Windows (Winget manifest):** [`packaging/winget/Arnav8452.AntigravityAtom.yaml`](packaging/winget/Arnav8452.AntigravityAtom.yaml)
 
+</details>
+
 ### Updating & Uninstalling
 
 - **Update:** re-run the one-line installer, or run `git pull` inside your clone.
 - **Uninstall (Linux/macOS):** `./install.sh --uninstall`
 - **Uninstall (Windows):** `.\install.ps1 -Uninstall`
-- Quit Antigravity completely and reopen it through the installed launcher/shortcut to meet Atom. (If Antigravity is already running, launching again forwards arguments to the existing single instance.)
+- Quit Antigravity completely and reopen it through the installed launcher/shortcut to meet Atom. (If Antigravity is still open in the background, the new shortcut won't attach Atom - make sure to quit it completely first.)
 
 ## States (19 code-generated states)
 
@@ -182,8 +186,8 @@ python3 tools/trigger_state.py typing --mood angry    # live angry-tinted + tilt
 python3 tools/trigger_state.py thinking --mood sad    # live sad-tinted + tilted-eye thinking
 python3 tools/trigger_state.py --tour --mood angry    # cycle work states in angry mood
 python3 tools/trigger_state.py --tour-all             # cycle normal, angry work, and sad work states
-python3 tools/trigger_state.py --limit gemini-3-pro   # simulate 5h/weekly quota sleep
-python3 tools/trigger_state.py --clear-limit gemini-3-pro
+python3 tools/trigger_state.py --limit gemini-3.8-flash   # simulate 5h/weekly quota sleep
+python3 tools/trigger_state.py --clear-limit gemini-3.8-flash
 ```
 
 - **Smooth transitions & dwell time.** Switches finish the current frame cleanly
@@ -200,10 +204,54 @@ python3 tools/trigger_state.py --clear-limit gemini-3-pro
   ignored, common technical phrases (e.g., "garbage collector", "worst-case",
   SQL queries) are filtered out, and words like "amazing" only count in short
   replies.
-- **Fallback art:** states without their own art reuse the idle animation
-  lazily on first use, with only the blue body pixels recoloured and a
-  different speed (`FALLBACK_LOOK` in `atom_inject.js`). Everything stays fully
-  opaque; recolouring yields cleanly so the app never stalls.
+- **Fallback art:** States without custom art reuse `idle` with a colour tint and adjusted speed (`FALLBACK_LOOK` in `atom_inject.js`). Recolouring runs in small steps so the app never lags.
+
+## How it works
+
+```mermaid
+flowchart LR
+    Agent["Antigravity Agent"] -- "hooks.json" --> Hook["atom_hook.py"]
+    Hook -- "writes" --> State["~/.antigravity-atom/*.json"]
+    Launcher["atom_launch.py"] -- "starts" --> App["Antigravity App"]
+    Launcher -- "DevTools CDP" --> Inject["atom_inject.js (Main Window)"]
+    State -- "state + mood + limits" --> Inject
+```
+
+- **Hooks (`plugin.json` + `hooks.json`):** Runs `python3 -S -I ./atom_hook.py <Event>` on 6 lifecycle events (`SessionStart`, `PreInvocation`, `PreToolUse`, `PostToolUse`, `PostInvocation`, `Stop`), writes per-conversation state/mood/limit JSON, and wakes the launcher via `notify.sock` (POSIX) or loopback UDP `notify.port` (Windows).
+- **In-app rendering (`atom_launch.py` + `atom_inject.js`):** Launches Antigravity with `--remote-debugging-pipe` (POSIX) or loopback `--remote-debugging-port` (Windows), injects the `<35 KB` bootstrap, and streams WebP sprites lazily into localhost pages mounting `[data-testid="agent-input-box"]`.
+
+## Project Layout
+
+<details>
+<summary>View repository structure</summary>
+
+```
+plugin.json, hooks.json         Antigravity plugin manifest & lifecycle hooks
+atom_hook.py                    hook -> state/mood/limit files (stdlib, ~20 ms per event)
+atom_launch.py                  cross-platform launcher & CDP injector (Linux/macOS/Windows)
+atom_inject.js                  in-app mascot renderer, 60fps crossfades, mood & limit sync
+assets/atom/                    19 lossless WebP sprite sheets + frame/loop JSON metadata
+assets/moodboard.{gif,webp}     animated 16:9 showcase card
+tools/render_all.py             code-generated renderer for all 19 states
+tools/render_gemini_typing.py   base silhouette extractor & rainbow crown sampler
+tools/render_idle.py            standalone idle GIF/RGBA renderer
+tools/render_moodboard.py       animated mood board builder (GIF + WebP)
+tools/trigger_state.py          live preview CLI + local --gallery server
+tools/preview.html              interactive browser gallery (19 states × Normal/Angry/Sad)
+tools/make_sprite.py            custom render -> sprite sheet helper (optional Pillow)
+tools/build_assets.sh           rebuild all 19 sprite sheets
+art/                            original source artwork and reference renders
+packaging/                      AUR PKGBUILD, Homebrew formula, Scoop & Winget manifests
+tests/                          Python & Node.js unit test suite + GitHub Actions CI & CodeQL
+site/                           atom.log product website (deployed via GitHub Pages)
+.github/                        CI, CodeQL, GitHub Pages, Dependabot & templates
+install.sh, install.ps1         Linux/macOS (.app bundle) & Windows remote/local installers
+AGENTS.md, CONTRIBUTING.md      contributor, AI-agent, governance & security documentation
+SECURITY.md, CODE_OF_CONDUCT.md security policy & Contributor Covenant v2.1
+LICENSE                         MIT License
+```
+
+</details>
 
 ## Adding art
 
@@ -248,36 +296,9 @@ python3 -m unittest discover -s tests -v
 node --test tests/test_atom_inject.mjs
 ```
 
-## Project Layout
-
-```
-plugin.json, hooks.json         Antigravity plugin manifest & lifecycle hooks
-atom_hook.py                    hook -> state/mood/limit files (stdlib, ~20 ms per event)
-atom_launch.py                  cross-platform launcher & CDP injector (Linux/macOS/Windows)
-atom_inject.js                  in-app mascot renderer, 60fps crossfades, mood & limit sync
-assets/atom/                    19 lossless WebP sprite sheets + frame/loop JSON metadata
-assets/moodboard.{gif,webp}     animated 16:9 showcase card
-tools/render_all.py             code-generated renderer for all 19 states
-tools/render_gemini_typing.py   base silhouette extractor & rainbow crown sampler
-tools/render_idle.py            standalone idle GIF/RGBA renderer
-tools/render_moodboard.py       animated mood board builder (GIF + WebP)
-tools/trigger_state.py          live preview CLI + local --gallery server
-tools/preview.html              interactive browser gallery (19 states × Normal/Angry/Sad)
-tools/make_sprite.py            custom render -> sprite sheet helper (optional Pillow)
-tools/build_assets.sh           rebuild all 19 sprite sheets
-art/                            original source artwork and reference renders
-packaging/                      AUR PKGBUILD, Homebrew formula, Scoop & Winget manifests
-tests/                          Python & Node.js unit test suite + GitHub Actions CI & CodeQL
-.github/                        CI, CodeQL security scanning, Dependabot, CODEOWNERS & templates
-install.sh, install.ps1         Linux/macOS (.app bundle) & Windows remote/local installers
-AGENTS.md, CONTRIBUTING.md      contributor, AI-agent, governance & security documentation
-SECURITY.md, CODE_OF_CONDUCT.md security policy & Contributor Covenant v2.1
-LICENSE                         MIT License
-```
-
 ## Notes
 
-- Licensed under the **MIT License** — see [LICENSE](LICENSE).
+- Licensed under the **MIT License** - see [LICENSE](LICENSE).
 - `PreToolUse` prints nothing, so Antigravity's own permission settings still
   decide whether a tool runs.
 - Placement relies on the app's `data-testid="agent-input-box"`. If an app
