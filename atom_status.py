@@ -22,7 +22,10 @@ Usage:
   atom_status.py                     read the payload on stdin (what agy does)
   atom_status.py --style line        always a single line
   atom_status.py --color 256         for terminals without truecolor
+  atom_status.py --skin atom         another skin: v2 (default), atom, chibi,
+                                     base-qt (or set ATOM_SKIN)
   atom_status.py --demo              print every state, for trying it out
+  atom_status.py --demo --skin all   print every skin
 """
 
 from __future__ import annotations
@@ -47,24 +50,141 @@ BUSY_AGENT_STATES = frozenset({"working", "tool_use", "reviewing", "thinking"})
 REACTIONS = frozenset({"done", "error", "canceled", "tired"})
 
 # --- art --------------------------------------------------------------------
-# 16x10 pixels, drawn with half blocks (2 pixels per row) -> 5 lines.
-#   c crown (rainbow by column)   B body   D body shade   . transparent
-BASE = (
-    "..cccccccccccc..",
-    "..BBBBBBBBBBBB..",
-    "..BBBBBBBBBBBB..",
-    "..BBBBBBBBBBBB..",
-    "..BBBBBBBBBBBB..",
-    ".BBBBBBBBBBBBBB.",
-    "BB.BBBBBBBBBB.BB",
-    "...DDDDDDDDDD...",
-    "...DDD....DDD...",
-    "...DDD....DDD...",
+# Each skin is a small pixel grid drawn with half blocks (2 pixels per line).
+# Skin ids match the desktop skins in assets/<id>/. Grid characters:
+#   . transparent   c crown/beanie (rainbow by column)   any other letter:
+#   a colour from the skin's palette. Letters in "body" take mood tints
+#   (like the desktop's blue-only recolour); the rest only dim when asleep.
+ATOM_RAINBOW = (
+    (255, 84, 84),
+    (255, 150, 60),
+    (250, 214, 70),
+    (96, 214, 120),
+    (60, 196, 232),
+    (112, 124, 255),
+    (196, 96, 232),
 )
-SPRITE_W = len(BASE[0])
-SPRITE_H = len(BASE)
-LEFT_EYE = (4, 2)
-RIGHT_EYE = (10, 2)
+# V2 / Chibi beanie stripes, left to right (from assets/v2).
+BEANIE_RAINBOW = (
+    (146, 148, 251),
+    (62, 224, 236),
+    (84, 240, 154),
+    (252, 228, 104),
+    (254, 150, 88),
+    (254, 118, 148),
+    (220, 110, 220),
+)
+PINK = (255, 140, 180)
+WATER = (150, 220, 255)
+
+SKINS = {
+    "v2": {
+        "name": "Atom V2",
+        "grid": (
+            ".......PP.......",
+            ".....cccccc.....",
+            "...cccccccccc...",
+            "..cccccccccccc..",
+            "..KKKKKKKKKKKK..",
+            "..BBBBBBBBBBBB..",
+            "..BBBBBBBBBBBB..",
+            "..BBBBBBBBBBBB..",
+            ".DBBBBBBBBBBBBD.",
+            ".DBBBBBBBBBBBBD.",
+            "..BBBBBBBBBBBB..",
+            "...BBBBBBBBBB...",
+            "....BBBBBBBB....",
+            "....DD....DD....",
+        ),
+        "palette": {"B": (40, 186, 248), "D": (32, 108, 168), "K": (32, 108, 168), "P": (100, 248, 255)},
+        "body": "BD",
+        "crown": BEANIE_RAINBOW,
+        "eyes": ((4, 6), (10, 6)),
+        "extras": {
+            "blush": ((3, 8, PINK), (12, 8, PINK)),
+            "tear": ((4, 9, WATER),),
+            "sweat": ((14, 2, WATER), (14, 3, WATER)),
+        },
+    },
+    "atom": {
+        "name": "Atom",
+        "grid": (
+            "..cccccccccccc..",
+            "..BBBBBBBBBBBB..",
+            "..BBBBBBBBBBBB..",
+            "..BBBBBBBBBBBB..",
+            "..BBBBBBBBBBBB..",
+            ".BBBBBBBBBBBBBB.",
+            "BB.BBBBBBBBBB.BB",
+            "...DDDDDDDDDD...",
+            "...DDD....DDD...",
+            "...DDD....DDD...",
+        ),
+        "palette": {"B": (44, 140, 232), "D": (30, 104, 196)},
+        "body": "BD",
+        "crown": ATOM_RAINBOW,
+        "eyes": ((4, 2), (10, 2)),
+        "extras": {
+            "blush": ((3, 4, PINK), (12, 4, PINK)),
+            "tear": ((4, 5, WATER),),
+            "sweat": ((14, 1, WATER), (14, 2, WATER)),
+        },
+    },
+    "chibi": {
+        "name": "Cozy Chibi",
+        "grid": (
+            ".......PP.......",
+            "..E..cccccc..E..",
+            "..EEcccccccccEE.",
+            "..cccccccccccc..",
+            "..KKKKKKKKKKKK..",
+            ".WWWBBBBBBBBWWW.",
+            ".WWBBBBBBBBBBWW.",
+            ".WWBBBBBBBBBBWW.",
+            ".WWWBBBBBBBBWWW.",
+            "..CCCCCCCCCCCC..",
+            ".CCCCCCCCCCCCCC.",
+            ".BCCCGGGGGGCCCB.",
+            "..CCCCCCCCCCCC..",
+            "...DD......DD...",
+        ),
+        "palette": {
+            "B": (40, 186, 248), "D": (32, 108, 168), "K": (40, 120, 150), "P": (100, 248, 255),
+            "E": (205, 210, 222), "W": (226, 230, 240), "C": (250, 236, 200), "G": (226, 206, 160),
+        },
+        "body": "BD",
+        "crown": BEANIE_RAINBOW,
+        "eyes": ((5, 6), (9, 6)),
+        "extras": {
+            "blush": ((4, 8, PINK), (11, 8, PINK)),
+            "tear": ((4, 8, WATER),),
+            "sweat": ((15, 3, WATER), (15, 4, WATER)),
+        },
+    },
+    "base-qt": {
+        "name": "base qt.",
+        "grid": (
+            "..BBBBBBBBBBBB..",
+            "..BBBBBBBBBBBB..",
+            "..BBBBBBBBBBBB..",
+            "..BBBBBBBBBBBB..",
+            ".BBBBBBBBBBBBBB.",
+            "BB.BBBBBBBBBB.BB",
+            "...BBBBBBBBBB...",
+            "...DDDDDDDDDD...",
+        ),
+        "palette": {"B": (44, 140, 232), "D": (30, 104, 196)},
+        "body": "BD",
+        "crown": (),
+        "eyes": ((4, 1), (10, 1)),
+        "extras": {
+            "blush": ((3, 3, PINK), (12, 3, PINK)),
+            "tear": ((4, 4, WATER),),
+            "sweat": ((14, 0, WATER), (14, 1, WATER)),
+        },
+    },
+}
+DEFAULT_SKIN = "v2"
 
 # Eye shapes as (dx, dy) offsets from each eye's origin, for (left, right).
 _OPEN = ((0, 0), (1, 0), (0, 1), (1, 1))
@@ -84,36 +204,22 @@ EYES = {
     "sad": (((0, 1), (1, 1), (0, 2), (1, 2), (-1, 0)), ((0, 1), (1, 1), (0, 2), (1, 2), (2, 0))),
     "wide": (((0, -1), (1, -1), (0, 0), (1, 0), (0, 1), (1, 1)),) * 2,
 }
-# Extra pixels in a colour of their own: (x, y, rgb).
-EXTRAS = {
-    "blush": ((3, 4, (255, 140, 180)), (12, 4, (255, 140, 180))),
-    "tear": ((4, 5, (150, 220, 255)),),
-    "sweat": ((14, 1, (150, 220, 255)), (14, 2, (150, 220, 255))),
-}
-
 EYE_RGB = (10, 14, 20)
-BODY_RGB = (44, 140, 232)
-SHADE_RGB = (30, 104, 196)
-RAINBOW = (
-    (255, 84, 84),
-    (255, 150, 60),
-    (250, 214, 70),
-    (96, 214, 120),
-    (60, 196, 232),
-    (112, 124, 255),
-    (196, 96, 232),
-)
+
+
+def get_skin(name: object) -> dict:
+    return SKINS.get(str(name or ""), SKINS[DEFAULT_SKIN])
 
 
 def _mix(a: tuple, b: tuple, t: float) -> tuple:
     return tuple(int(round(x + (y - x) * t)) for x, y in zip(a, b))
 
 
-def _crown(col: int) -> tuple:
-    span = 11  # crown runs over columns 2..13
-    pos = max(0.0, min(1.0, (col - 2) / span)) * (len(RAINBOW) - 1)
-    i = min(int(pos), len(RAINBOW) - 2)
-    return _mix(RAINBOW[i], RAINBOW[i + 1], pos - i)
+def _crown(colours: tuple, col: int, first: int, last: int) -> tuple:
+    span = max(1, last - first)
+    pos = max(0.0, min(1.0, (col - first) / span)) * (len(colours) - 1)
+    i = min(int(pos), len(colours) - 2)
+    return _mix(colours[i], colours[i + 1], pos - i)
 
 
 # --- looks for each state ---------------------------------------------------
@@ -184,13 +290,15 @@ FACES = {
 def _tinted(rgb: tuple, tint: str | None, part: str) -> tuple:
     if tint is None:
         return rgb
+    if tint in ("sleep", "dim"):
+        return _mix(rgb, (20, 24, 34), 0.5 if tint == "sleep" else 0.3)
+    if part == "other" or (part == "crown" and tint in ("angry", "sad")):
+        return rgb  # like the desktop: moods recolour the blue body only
     if tint == "angry":
         return _mix(rgb, (230, 60, 70), 0.45)
     if tint == "sad":
         grey = (sum(rgb) // 3,) * 3
         return _mix(_mix(rgb, grey, 0.6), (70, 90, 140), 0.2)
-    if tint in ("sleep", "dim"):
-        return _mix(rgb, (20, 24, 34), 0.5 if tint == "sleep" else 0.3)
     if tint == "error":
         return (235, 70, 70) if part == "crown" else _mix(rgb, (120, 40, 60), 0.25)
     if tint == "approval":
@@ -198,30 +306,34 @@ def _tinted(rgb: tuple, tint: str | None, part: str) -> tuple:
     return rgb
 
 
-def sprite_pixels(state: str) -> list[list[tuple | None]]:
+def sprite_pixels(state: str, skin: str = DEFAULT_SKIN) -> list[list[tuple | None]]:
+    sk = get_skin(skin)
+    rows = sk["grid"]
+    width, height = len(rows[0]), len(rows)
     eyes, extras, tint, _ = LOOKS.get(state, LOOKS["idle"])
+    crown_cols = [x for row in rows for x, ch in enumerate(row) if ch == "c"]
+    first, last = (min(crown_cols), max(crown_cols)) if crown_cols else (0, 0)
     grid: list[list[tuple | None]] = []
-    for y, row in enumerate(BASE):
+    for row in rows:
         line: list[tuple | None] = []
         for x, ch in enumerate(row):
-            if ch == "c":
-                line.append(_tinted(_crown(x), tint, "crown"))
-            elif ch == "B":
-                line.append(_tinted(BODY_RGB, tint, "body"))
-            elif ch == "D":
-                line.append(_tinted(SHADE_RGB, tint, "body"))
+            if ch == "c" and sk["crown"]:
+                line.append(_tinted(_crown(sk["crown"], x, first, last), tint, "crown"))
+            elif ch in sk["palette"]:
+                part = "body" if ch in sk["body"] else "other"
+                line.append(_tinted(sk["palette"][ch], tint, part))
             else:
                 line.append(None)
         grid.append(line)
     left, right = EYES[eyes]
-    for (ox, oy), offsets in ((LEFT_EYE, left), (RIGHT_EYE, right)):
+    for (ox, oy), offsets in zip(sk["eyes"], (left, right)):
         for dx, dy in offsets:
             x, y = ox + dx, oy + dy
-            if 0 <= y < SPRITE_H and 0 <= x < SPRITE_W and grid[y][x] is not None:
+            if 0 <= y < height and 0 <= x < width and grid[y][x] is not None:
                 grid[y][x] = EYE_RGB
     for name in extras:
-        for x, y, rgb in EXTRAS[name]:
-            if 0 <= y < SPRITE_H and 0 <= x < SPRITE_W:
+        for x, y, rgb in sk["extras"].get(name, ()):
+            if 0 <= y < height and 0 <= x < width:
                 grid[y][x] = rgb
     return grid
 
@@ -262,11 +374,12 @@ def bg(rgb: tuple, mode: str) -> str:
     return "\x1b[48;2;{};{};{}m".format(*rgb)
 
 
-def sprite_lines(state: str, mode: str) -> list[str]:
-    grid = sprite_pixels(state)
+def sprite_lines(state: str, mode: str, skin: str = DEFAULT_SKIN) -> list[str]:
+    grid = sprite_pixels(state, skin)
+    height, width = len(grid), len(grid[0])
     out = []
-    for y in range(0, SPRITE_H, 2):
-        top, bottom = grid[y], grid[y + 1] if y + 1 < SPRITE_H else [None] * SPRITE_W
+    for y in range(0, height, 2):
+        top, bottom = grid[y], grid[y + 1] if y + 1 < height else [None] * width
         line = ""
         for t, b in zip(top, bottom):
             if t is None and b is None:
@@ -459,7 +572,8 @@ def _look_state(info: dict) -> str:
     return state
 
 
-def render(info: dict, width: int, style: str = "auto", mode: str = "truecolor") -> str:
+def render(info: dict, width: int, style: str = "auto", mode: str = "truecolor", skin: str = DEFAULT_SKIN) -> str:
+    sk = get_skin(skin)
     state = info["state"]
     look = _look_state(info)
     label = LABELS.get(state, state)
@@ -478,7 +592,7 @@ def render(info: dict, width: int, style: str = "auto", mode: str = "truecolor")
 
     if style == "line":
         eyes = LOOKS.get(look, LOOKS["idle"])[0]
-        body = _tinted(BODY_RGB, LOOKS.get(look, LOOKS["idle"])[2], "body")
+        body = _tinted(sk["palette"]["B"], LOOKS.get(look, LOOKS["idle"])[2], "body")
         face = FACES.get(eyes, FACES["open"])
         if mode == "none":
             head = f"[{face}]"
@@ -489,28 +603,32 @@ def render(info: dict, width: int, style: str = "auto", mode: str = "truecolor")
             text += f" {dim}· {detail}{reset}"
         return text
 
-    lines = sprite_lines(look, mode)
+    lines = sprite_lines(look, mode, skin)
     text = [""] * len(lines)
-    text[1] = f"  {bold}Atom{reset} · {fg(colour, mode)}{label}{reset}"
-    if detail:
-        text[2] = f"  {dim}{detail}{reset}"
+    row = min(len(lines) - 1, sk["eyes"][0][1] // 2)  # label level with the eyes
+    text[row] = f"  {bold}Atom{reset} · {fg(colour, mode)}{label}{reset}"
+    if detail and row + 1 < len(text):
+        text[row + 1] = f"  {dim}{detail}{reset}"
     return "\n".join((s + t).rstrip() for s, t in zip(lines, text))
 
 
 # --- entry point ------------------------------------------------------------
 
 def _parse_args(argv: list[str]) -> dict:
-    opts = {"style": "auto", "color": "", "demo": False}
+    opts = {"style": "auto", "color": "", "skin": "", "demo": False}
     it = iter(argv)
     for arg in it:
         if arg == "--demo":
             opts["demo"] = True
-        elif arg in ("--style", "--color"):
+        elif arg in ("--style", "--color", "--skin"):
             opts[arg[2:]] = next(it, "")
-        elif arg.startswith("--style="):
-            opts["style"] = arg.split("=", 1)[1]
-        elif arg.startswith("--color="):
-            opts["color"] = arg.split("=", 1)[1]
+        elif arg.startswith(("--style=", "--color=", "--skin=")):
+            key, value = arg[2:].split("=", 1)
+            opts[key] = value
+    if opts["skin"] not in SKINS and not (opts["demo"] and opts["skin"] == "all"):
+        opts["skin"] = os.environ.get("ATOM_SKIN", "")
+        if opts["skin"] not in SKINS:
+            opts["skin"] = DEFAULT_SKIN
     if opts["style"] not in ("auto", "sprite", "line"):
         opts["style"] = "auto"
     if opts["color"] not in ("truecolor", "256", "none"):
@@ -523,7 +641,13 @@ def _parse_args(argv: list[str]) -> dict:
 
 
 def demo(opts: dict) -> str:
-    blocks = []
+    if opts["skin"] == "all":
+        blocks = []
+        for name, sk in SKINS.items():
+            blocks.append(f"── {sk['name']} ({name}){' · default' if name == DEFAULT_SKIN else ''}")
+            blocks.append(render({"state": "idle", "mood": None, "detail": ""}, 120, opts["style"], opts["color"], name))
+        return "\n\n".join(blocks)
+    blocks = [f"── {SKINS[opts['skin']]['name']} ({opts['skin']})"]
     examples = [
         ("idle", None, ""), ("thinking", None, ""), ("typing", None, ""),
         ("running", None, ""), ("exploring", None, ""), ("delegating", None, "2 subagents running"),
@@ -533,7 +657,7 @@ def demo(opts: dict) -> str:
         ("waking", None, ""), ("sleeping", None, "back at 14:30"), ("watching", None, "1 background task"),
     ]
     for state, mood, detail in examples:
-        blocks.append(render({"state": state, "mood": mood, "detail": detail}, 120, opts["style"], opts["color"]))
+        blocks.append(render({"state": state, "mood": mood, "detail": detail}, 120, opts["style"], opts["color"], opts["skin"]))
     return "\n\n".join(blocks)
 
 
@@ -562,7 +686,7 @@ def main(argv: list[str] | None = None) -> None:
         if not isinstance(payload, dict):
             payload = {}
         width = int(_num(payload.get("terminal_width")) or 80)
-        out = render(resolve(payload), width, opts["style"], opts["color"])
+        out = render(resolve(payload), width, opts["style"], opts["color"], opts["skin"])
     except Exception:
         out = fallback
     finally:

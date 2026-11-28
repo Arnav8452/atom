@@ -17,6 +17,7 @@ Usage:
 Options:
   --force               replace a status line you already have (it is saved
                         and put back by --uninstall)
+  --skin v2|atom|chibi|base-qt   (default v2)
   --style auto|sprite|line   --color truecolor|256|none
   --python CMD          interpreter to run (default: python3)
   --settings PATH       settings.json to edit (default: the CLI's)
@@ -34,6 +35,8 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATUS_SCRIPT = os.path.join(HERE, "atom_status.py")
 MARKER = "atom_status.py"
+# Same ids as atom_status.SKINS (v2 is the default, so it needs no flag).
+SKIN_IDS = ("v2", "atom", "chibi", "base-qt")
 
 
 def default_settings_path() -> str:
@@ -49,7 +52,9 @@ def plugin_installed() -> bool:
     return os.path.isfile(os.path.join(plugin, "hooks.json")) and os.path.isfile(os.path.join(plugin, "atom_hook.py"))
 
 
-def build_command(python: str = "python3", style: str = "auto", color: str = "", windows: bool | None = None) -> str:
+def build_command(
+    python: str = "python3", style: str = "auto", color: str = "", skin: str = "", windows: bool | None = None
+) -> str:
     windows = os.name == "nt" if windows is None else windows
     if windows:
         # The CLI runs the command with `cmd /c`; double quotes are what cmd understands.
@@ -61,6 +66,8 @@ def build_command(python: str = "python3", style: str = "auto", color: str = "",
         cmd += f" --style {style}"
     if color:
         cmd += f" --color {color}"
+    if skin:
+        cmd += f" --skin {skin}"
     return cmd
 
 
@@ -196,7 +203,7 @@ def uninstall(path: str, dry_run: bool = False) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    opts = {"settings": default_settings_path(), "python": "python3", "style": "auto", "color": ""}
+    opts = {"settings": default_settings_path(), "python": "python3", "style": "auto", "color": "", "skin": ""}
     flags = set()
     it = iter(args)
     for arg in it:
@@ -205,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if arg in ("--uninstall", "--force", "--dry-run"):
             flags.add(arg)
-        elif arg in ("--settings", "--python", "--style", "--color"):
+        elif arg in ("--settings", "--python", "--style", "--color", "--skin"):
             value = next(it, None)
             if value is None:
                 print(f"{arg} needs a value", file=sys.stderr)
@@ -220,11 +227,14 @@ def main(argv: list[str] | None = None) -> int:
     if opts["color"] not in ("", "truecolor", "256", "none"):
         print("--color must be truecolor, 256 or none", file=sys.stderr)
         return 2
+    if opts["skin"] not in ("",) + SKIN_IDS:
+        print(f"--skin must be one of: {', '.join(SKIN_IDS)}", file=sys.stderr)
+        return 2
 
     path = os.path.expanduser(opts["settings"])
     if "--uninstall" in flags:
         return uninstall(path, dry_run="--dry-run" in flags)
-    command = build_command(opts["python"], opts["style"], opts["color"])
+    command = build_command(opts["python"], opts["style"], opts["color"], opts["skin"])
     return install(path, command, force="--force" in flags, dry_run="--dry-run" in flags)
 
 

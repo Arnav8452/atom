@@ -52,6 +52,8 @@ Turn it off with `python3 atom_cli_setup.py --uninstall`, or in the CLI with
 
 | Option | |
 |---|---|
+| `--skin v2` | Atom V2: round blob with a rainbow beanie and pom-pom (default) |
+| `--skin atom` / `--skin chibi` / `--skin base-qt` | the classic box Atom / Cozy Chibi / base qt. (`ATOM_SKIN` works too) |
 | `--style auto` | pixel Atom at 50+ columns, one line below that (default) |
 | `--style sprite` / `--style line` | always the pixel Atom / always one line |
 | `--color 256` | for terminals without truecolor (`ATOM_COLOR=256` works too) |
@@ -59,7 +61,11 @@ Turn it off with `python3 atom_cli_setup.py --uninstall`, or in the CLI with
 
 Pass them to `atom_cli_setup.py` and it writes them into the command.
 
-To see every state without running `agy`: `python3 atom_status.py --demo`.
+To see every state without running `agy`: `python3 atom_status.py --demo`
+(add `--skin chibi` etc. for another skin, or `--skin all` to see every skin).
+
+The skins are small hand-drawn terminal versions of the desktop skins in `assets/`, using the
+same ids. Moods only recolour the blue body and leave the beanie stripes alone, as on the desktop.
 
 ## What Atom shows
 

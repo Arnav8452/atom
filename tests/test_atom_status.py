@@ -188,22 +188,42 @@ class ResolveTests(unittest.TestCase):
 
 
 class RenderTests(unittest.TestCase):
-    def test_every_state_renders_in_every_mode(self) -> None:
-        for state in atom_status.LOOKS:
-            for style in ("sprite", "line"):
-                for mode in ("truecolor", "256", "none"):
-                    out = atom_status.render({"state": state, "mood": None, "detail": "x"}, 120, style, mode)
-                    self.assertIn("Atom", out)
-                    if mode == "none":
-                        self.assertNotIn("\x1b", out)
+    def test_every_state_renders_in_every_mode_and_skin(self) -> None:
+        for skin in atom_status.SKINS:
+            for state in atom_status.LOOKS:
+                for style in ("sprite", "line"):
+                    for mode in ("truecolor", "256", "none"):
+                        info = {"state": state, "mood": None, "detail": "x"}
+                        out = atom_status.render(info, 120, style, mode, skin)
+                        self.assertIn("Atom", out, (skin, state, style, mode))
+                        if mode == "none":
+                            self.assertNotIn("\x1b", out)
 
-    def test_sprite_is_five_lines(self) -> None:
-        out = atom_status.render({"state": "idle", "mood": None, "detail": ""}, 120, "sprite", "truecolor")
-        self.assertEqual(len(out.split("\n")), 5)
+    def test_v2_is_the_default_skin(self) -> None:
+        self.assertEqual(atom_status.DEFAULT_SKIN, "v2")
+        info = {"state": "idle", "mood": None, "detail": ""}
+        self.assertEqual(atom_status.render(info, 120), atom_status.render(info, 120, skin="v2"))
+        self.assertEqual(atom_status.get_skin("nope"), atom_status.SKINS["v2"])
+
+    def test_skins_match_desktop_skin_ids(self) -> None:
+        self.assertEqual(set(atom_status.SKINS), {"atom", "v2", "chibi", "base-qt"})
+
+    def test_sprite_heights(self) -> None:
+        info = {"state": "idle", "mood": None, "detail": ""}
+        for skin, lines in (("v2", 7), ("atom", 5), ("chibi", 7), ("base-qt", 4)):
+            out = atom_status.render(info, 120, "sprite", "truecolor", skin)
+            self.assertEqual(len(out.split("\n")), lines, skin)
+
+    def test_label_sits_level_with_the_eyes(self) -> None:
+        info = {"state": "idle", "mood": None, "detail": "more"}
+        for skin, sk in atom_status.SKINS.items():
+            lines = plain(atom_status.render(info, 120, "sprite", "truecolor", skin)).split("\n")
+            row = sk["eyes"][0][1] // 2
+            self.assertIn("Atom · ready", lines[row], skin)
 
     def test_auto_style_by_width(self) -> None:
         info = {"state": "thinking", "mood": None, "detail": ""}
-        self.assertEqual(len(atom_status.render(info, 120).split("\n")), 5)
+        self.assertGreater(len(atom_status.render(info, 120).split("\n")), 1)
         self.assertEqual(len(atom_status.render(info, 40).split("\n")), 1)
 
     def test_mood_changes_look_not_label(self) -> None:
@@ -211,16 +231,58 @@ class RenderTests(unittest.TestCase):
         self.assertIn("thinking", out)
         self.assertIn(atom_status.FACES["angry"], out)
 
+    def test_moods_leave_the_beanie_alone(self) -> None:
+        calm = atom_status.sprite_pixels("idle", "v2")
+        for mood in ("angry", "sad"):
+            grid = atom_status.sprite_pixels(mood, "v2")
+            self.assertEqual(grid[2], calm[2], mood)  # beanie row unchanged
+            self.assertNotEqual(grid[10], calm[10], mood)  # body row tinted
+
     def test_256_colour_codes(self) -> None:
         out = atom_status.render({"state": "idle", "mood": None, "detail": ""}, 120, "sprite", "256")
         self.assertNotIn("38;2;", out)
         self.assertIn("38;5;", out)
 
-    def test_every_eye_shape_stays_inside_body(self) -> None:
-        for name, (left, right) in atom_status.EYES.items():
-            for (ox, oy), offsets in ((atom_status.LEFT_EYE, left), (atom_status.RIGHT_EYE, right)):
-                for dx, dy in offsets:
-                    self.assertEqual(atom_status.BASE[oy + dy][ox + dx], "B", f"{name} eye at {(ox + dx, oy + dy)}")
+    def test_grids_are_rectangular_and_use_known_letters(self) -> None:
+        for skin, sk in atom_status.SKINS.items():
+            widths = {len(row) for row in sk["grid"]}
+            self.assertEqual(len(widths), 1, skin)
+            letters = set("".join(sk["grid"])) - {"."}
+            known = set(sk["palette"]) | ({"c"} if sk["crown"] else set())
+            self.assertLessEqual(letters, known, skin)
+            self.assertIn("B", sk["palette"], skin)
+
+    def test_every_eye_shape_stays_on_the_face(self) -> None:
+        for skin, sk in atom_status.SKINS.items():
+            grid = sk["grid"]
+            for name, shapes in atom_status.EYES.items():
+                for (ox, oy), offsets in zip(sk["eyes"], shapes):
+                    for dx, dy in offsets:
+                        self.assertEqual(grid[oy + dy][ox + dx], "B", f"{skin}: {name} eye at {(ox + dx, oy + dy)}")
+
+    def test_extras_inside_the_grid(self) -> None:
+        for skin, sk in atom_status.SKINS.items():
+            h, w = len(sk["grid"]), len(sk["grid"][0])
+            for name in ("blush", "tear", "sweat"):
+                self.assertIn(name, sk["extras"], skin)
+                for x, y, _ in sk["extras"][name]:
+                    self.assertTrue(0 <= x < w and 0 <= y < h, f"{skin} {name}")
+
+    def test_skin_option_and_env(self) -> None:
+        self.assertEqual(atom_status._parse_args([])["skin"], "v2")
+        self.assertEqual(atom_status._parse_args(["--skin", "chibi"])["skin"], "chibi")
+        self.assertEqual(atom_status._parse_args(["--skin=atom"])["skin"], "atom")
+        self.assertEqual(atom_status._parse_args(["--skin", "bogus"])["skin"], "v2")
+        old = os.environ.get("ATOM_SKIN")
+        os.environ["ATOM_SKIN"] = "base-qt"
+        try:
+            self.assertEqual(atom_status._parse_args([])["skin"], "base-qt")
+            self.assertEqual(atom_status._parse_args(["--skin", "atom"])["skin"], "atom")
+        finally:
+            if old is None:
+                os.environ.pop("ATOM_SKIN", None)
+            else:
+                os.environ["ATOM_SKIN"] = old
 
 
 class ProcessTests(unittest.TestCase):
@@ -261,6 +323,13 @@ class ProcessTests(unittest.TestCase):
         proc = self.run_status("", "--demo", "--color", "none")
         self.assertEqual(proc.returncode, 0)
         self.assertIn("needs your OK", proc.stdout)
+        self.assertIn("Atom V2", proc.stdout)
+
+    def test_demo_all_skins(self) -> None:
+        proc = self.run_status("", "--demo", "--skin", "all")
+        self.assertEqual(proc.returncode, 0)
+        for sk in atom_status.SKINS.values():
+            self.assertIn(sk["name"], proc.stdout)
 
 
 class SetupTests(unittest.TestCase):
@@ -369,6 +438,17 @@ class SetupTests(unittest.TestCase):
         self.assertRegex(cmd, r'^python3 -S -I ".*atom_status\.py"$')
         cmd = atom_cli_setup.build_command("python3", "line", "256", windows=False)
         self.assertTrue(cmd.endswith("atom_status.py --style line --color 256"))
+        cmd = atom_cli_setup.build_command("python3", skin="chibi", windows=False)
+        self.assertTrue(cmd.endswith("atom_status.py --skin chibi"))
+        self.assertNotIn("--skin", atom_cli_setup.build_command("python3", windows=False))
+
+    def test_setup_knows_every_skin(self) -> None:
+        self.assertEqual(set(atom_cli_setup.SKIN_IDS), set(atom_status.SKINS))
+
+    def test_skin_option(self) -> None:
+        self.assertEqual(self.setup("--skin", "atom"), 0)
+        self.assertIn("--skin atom", self.read()["statusLine"]["command"])
+        self.assertEqual(self.setup("--skin", "nope"), 2)
 
 
 if __name__ == "__main__":
