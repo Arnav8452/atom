@@ -4,6 +4,7 @@
 Usage:
   python3 tools/render_moodboard.py
   python3 tools/render_moodboard.py --proof /tmp/atom_moodboard_proof.png
+  python3 tools/render_moodboard.py --typing-gif --typing-proof /tmp/atom_typing_proof.png
 """
 
 from __future__ import annotations
@@ -21,8 +22,10 @@ ROOT = Path(__file__).resolve().parent.parent
 ASSETS_ATOM = ROOT / "assets" / "atom"
 OUT_GIF = ROOT / "assets" / "moodboard.gif"
 OUT_WEBP = ROOT / "assets" / "moodboard.webp"
+OUT_TYPING_GIF = ROOT / "assets" / "typing_showcase.gif"
 
 W, H = 1080, 608
+TYPING_W, TYPING_H = 560, 380
 N_FRAMES = 60
 FPS = 10
 
@@ -152,7 +155,7 @@ def paint_complete_animation(
     ctx: cairo.Context, state: str, f: int,
     sprites: dict[str, tuple[cairo.ImageSurface, dict]],
     seqs: dict[str, list[int]],
-    dx: float, dy: float,
+    dx: float, dy: float, scale: float = 1.0,
 ) -> None:
     sp_surf, sp_meta = sprites[state]
     idle_surf, idle_meta = sprites["idle"]
@@ -161,21 +164,44 @@ def paint_complete_animation(
     n_act = len(seq)
 
     if f < n_act:
-        paint_sprite_frame(ctx, sp_surf, sp_meta, seq[f], dx, dy, scale=1.0, alpha=1.0)
+        paint_sprite_frame(ctx, sp_surf, sp_meta, seq[f], dx, dy, scale=scale, alpha=1.0)
     elif f == n_act:
-        paint_sprite_frame(ctx, sp_surf, sp_meta, seq[-1], dx, dy, scale=1.0, alpha=0.67)
-        paint_sprite_frame(ctx, idle_surf, idle_meta, idle_fi, dx, dy, scale=1.0, alpha=0.33)
+        paint_sprite_frame(ctx, sp_surf, sp_meta, seq[-1], dx, dy, scale=scale, alpha=0.67)
+        paint_sprite_frame(ctx, idle_surf, idle_meta, idle_fi, dx, dy, scale=scale, alpha=0.33)
     elif f == n_act + 1:
-        paint_sprite_frame(ctx, sp_surf, sp_meta, seq[-1], dx, dy, scale=1.0, alpha=0.33)
-        paint_sprite_frame(ctx, idle_surf, idle_meta, idle_fi, dx, dy, scale=1.0, alpha=0.67)
+        paint_sprite_frame(ctx, sp_surf, sp_meta, seq[-1], dx, dy, scale=scale, alpha=0.33)
+        paint_sprite_frame(ctx, idle_surf, idle_meta, idle_fi, dx, dy, scale=scale, alpha=0.67)
     elif f == N_FRAMES - 2:
-        paint_sprite_frame(ctx, idle_surf, idle_meta, idle_fi, dx, dy, scale=1.0, alpha=0.67)
-        paint_sprite_frame(ctx, sp_surf, sp_meta, seq[0], dx, dy, scale=1.0, alpha=0.33)
+        paint_sprite_frame(ctx, idle_surf, idle_meta, idle_fi, dx, dy, scale=scale, alpha=0.67)
+        paint_sprite_frame(ctx, sp_surf, sp_meta, seq[0], dx, dy, scale=scale, alpha=0.33)
     elif f == N_FRAMES - 1:
-        paint_sprite_frame(ctx, idle_surf, idle_meta, idle_fi, dx, dy, scale=1.0, alpha=0.33)
-        paint_sprite_frame(ctx, sp_surf, sp_meta, seq[0], dx, dy, scale=1.0, alpha=0.67)
+        paint_sprite_frame(ctx, idle_surf, idle_meta, idle_fi, dx, dy, scale=scale, alpha=0.33)
+        paint_sprite_frame(ctx, sp_surf, sp_meta, seq[0], dx, dy, scale=scale, alpha=0.67)
     else:
-        paint_sprite_frame(ctx, idle_surf, idle_meta, idle_fi, dx, dy, scale=1.0, alpha=1.0)
+        paint_sprite_frame(ctx, idle_surf, idle_meta, idle_fi, dx, dy, scale=scale, alpha=1.0)
+
+
+def draw_prompt_bar(
+    ctx: cairo.Context, x: float, y: float, w: float, h: float, f: int, radius: float = 12.0,
+) -> None:
+    rounded_rect(ctx, x, y, w, h, radius)
+    ctx.set_source_rgb(0.051, 0.067, 0.090)
+    ctx.fill_preserve()
+    ctx.set_source_rgba(0.345, 0.651, 1.000, 0.52)
+    ctx.set_line_width(1.2)
+    ctx.stroke()
+    if (f % 10) < 6:
+        ctx.set_source_rgba(0.58, 0.80, 1.0, 0.78)
+        ctx.rectangle(x + 18, y + (h - 22) * 0.5, 2.5, 22)
+        ctx.fill()
+    btn_h = max(24.0, h - 28.0)
+    btn_w = max(28.0, btn_h + 2.0)
+    btn_x = x + w - btn_w - 14.0
+    btn_y = y + (h - btn_h) * 0.5
+    rounded_rect(ctx, btn_x, btn_y, btn_w, btn_h, 8)
+    ctx.set_source_rgba(0.122, 0.435, 0.922, 0.88)
+    ctx.fill()
+    draw_text(ctx, "→", btn_x + btn_w * 0.5, btn_y + btn_h * 0.68, 14, (1.0, 1.0, 1.0), bold=True, align="center")
 
 
 def render_frame(
@@ -219,21 +245,7 @@ def render_frame(
     ctx.stroke()
 
     # Minimalist prompt-bar silhouette beneath Hero Atom's feet (no placeholder text)
-    bar_bx, bar_by, bar_bw, bar_bh = hx + 24, 398, hw - 48, 54
-    rounded_rect(ctx, bar_bx, bar_by, bar_bw, bar_bh, 12)
-    ctx.set_source_rgb(0.051, 0.067, 0.090)
-    ctx.fill_preserve()
-    ctx.set_source_rgba(0.345, 0.651, 1.000, 0.52)
-    ctx.set_line_width(1.2)
-    ctx.stroke()
-    if (f % 10) < 6:
-        ctx.set_source_rgba(0.58, 0.80, 1.0, 0.78)
-        ctx.rectangle(bar_bx + 18, bar_by + 16, 2.5, 22)
-        ctx.fill()
-    rounded_rect(ctx, bar_bx + bar_bw - 42, bar_by + 14, 28, 26, 8)
-    ctx.set_source_rgba(0.122, 0.435, 0.922, 0.88)
-    ctx.fill()
-    draw_text(ctx, "→", bar_bx + bar_bw - 28, bar_by + 32, 14, (1.0, 1.0, 1.0), bold=True, align="center")
+    draw_prompt_bar(ctx, hx + 24, 398, hw - 48, 54, f)
 
     idle_surf, idle_meta = sprites["idle"]
     idle_f = f % len(idle_meta["durations"])
@@ -320,49 +332,108 @@ def render_frame(
     return surf
 
 
+def render_typing_frame(
+    f: int,
+    sprites: dict[str, tuple[cairo.ImageSurface, dict]],
+    seqs: dict[str, list[int]],
+) -> cairo.ImageSurface:
+    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, TYPING_W, TYPING_H)
+    ctx = cairo.Context(surf)
+    ctx.set_source_rgb(0.051, 0.067, 0.090)
+    ctx.paint()
+
+    glow = cairo.RadialGradient(362.0, 156.0, 16, 362.0, 156.0, 175)
+    glow.add_color_stop_rgba(0.0, 0.14, 0.34, 0.62, 0.30)
+    glow.add_color_stop_rgba(1.0, 0.051, 0.067, 0.090, 0.0)
+    ctx.set_source(glow)
+    ctx.paint()
+
+    # Right-side snap of the full-scale Antigravity prompt bar extending off the left edge
+    bar_x, bar_y, bar_w, bar_h = -40.0, 224.0, 556.0, 132.0
+    rounded_rect(ctx, bar_x, bar_y, bar_w, bar_h, 22.0)
+    ctx.set_source_rgb(0.086, 0.106, 0.133)
+    ctx.fill_preserve()
+    ctx.set_source_rgba(0.345, 0.651, 1.000, 0.42)
+    ctx.set_line_width(1.5)
+    ctx.stroke()
+
+    # Subtle muted circular icon silhouette left of send button for prompt-bar scale cue
+    ctx.set_source_rgba(0.30, 0.36, 0.44, 0.28)
+    ctx.arc(424.0, 316.0, 14.0, 0, 2 * math.pi)
+    ctx.fill()
+
+    # Crisp blue send button bottom-right (44x44)
+    rounded_rect(ctx, 452.0, 294.0, 44.0, 44.0, 12.0)
+    ctx.set_source_rgba(0.122, 0.435, 0.922, 0.92)
+    ctx.fill()
+    draw_text(ctx, "→", 474.0, 323.0, 19.0, (1.0, 1.0, 1.0), bold=True, align="center")
+
+    paint_complete_animation(ctx, "typing", f, sprites, seqs, dx=212.0, dy=12.0, scale=2.0)
+    return surf
+
+
+def _encode_sequence(
+    frames_dir: Path, tmp_dir: Path, name: str, out_gif: Path, out_webp: Path | None = None,
+) -> None:
+    pattern = str(frames_dir / "frame_%03d.png")
+    palette = str(tmp_dir / f"{name}_palette.png")
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-framerate", str(FPS), "-i", pattern, "-vf", "palettegen=stats_mode=diff", palette],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "ffmpeg", "-v", "error", "-y", "-framerate", str(FPS), "-i", pattern, "-i", palette,
+            "-lavfi", "paletteuse=dither=bayer:bayer_scale=3", "-loop", "0", str(out_gif),
+        ],
+        check=True,
+    )
+    print(f"{out_gif.relative_to(ROOT)}: {out_gif.stat().st_size // 1024} KB")
+    if out_webp is not None:
+        subprocess.run(
+            [
+                "ffmpeg", "-v", "error", "-y", "-framerate", str(FPS), "-i", pattern,
+                "-c:v", "libwebp", "-lossless", "0", "-q:v", "90", "-loop", "0", str(out_webp),
+            ],
+            check=True,
+        )
+        print(f"{out_webp.relative_to(ROOT)}: {out_webp.stat().st_size // 1024} KB")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--proof", default="", help="Optional PNG frame proof path (frame 18)")
+    ap.add_argument("--proof", default="", help="Optional moodboard PNG frame proof path (frame 18)")
+    ap.add_argument("--typing-gif", action="store_true", help="Render standalone zoomed typing showcase GIF")
+    ap.add_argument("--typing-proof", default="", help="Optional typing showcase PNG frame proof path (frame 18)")
     args = ap.parse_args()
 
     OUT_GIF.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="atom_moodboard_") as tmp:
         tmp_dir = Path(tmp)
-        frames_dir = tmp_dir / "frames"
-        frames_dir.mkdir()
         sprites = {st: load_sprite(st, tmp_dir) for st in ("idle", *(c[0] for c in CARDS))}
         seqs = {c[0]: build_complete_sequence(c[0], sprites[c[0]][1]) for c in CARDS}
 
-        for f in range(N_FRAMES):
-            surf = render_frame(f, sprites, seqs)
-            out_png = frames_dir / f"frame_{f:03d}.png"
-            surf.write_to_png(str(out_png))
-            if args.proof and f == 18:
-                Path(args.proof).write_bytes(out_png.read_bytes())
+        if not args.typing_gif or args.proof:
+            frames_dir = tmp_dir / "moodboard_frames"
+            frames_dir.mkdir()
+            for f in range(N_FRAMES):
+                surf = render_frame(f, sprites, seqs)
+                out_png = frames_dir / f"frame_{f:03d}.png"
+                surf.write_to_png(str(out_png))
+                if args.proof and f == 18:
+                    Path(args.proof).write_bytes(out_png.read_bytes())
+            _encode_sequence(frames_dir, tmp_dir, "moodboard", OUT_GIF, OUT_WEBP)
 
-        pattern = str(frames_dir / "frame_%03d.png")
-        palette = str(tmp_dir / "palette.png")
-        subprocess.run(
-            ["ffmpeg", "-v", "error", "-y", "-framerate", str(FPS), "-i", pattern, "-vf", "palettegen=stats_mode=diff", palette],
-            check=True,
-        )
-        subprocess.run(
-            [
-                "ffmpeg", "-v", "error", "-y", "-framerate", str(FPS), "-i", pattern, "-i", palette,
-                "-lavfi", "paletteuse=dither=bayer:bayer_scale=3", "-loop", "0", str(OUT_GIF),
-            ],
-            check=True,
-        )
-        subprocess.run(
-            [
-                "ffmpeg", "-v", "error", "-y", "-framerate", str(FPS), "-i", pattern,
-                "-c:v", "libwebp", "-lossless", "0", "-q:v", "90", "-loop", "0", str(OUT_WEBP),
-            ],
-            check=True,
-        )
-
-    print(f"{OUT_GIF.relative_to(ROOT)}: {OUT_GIF.stat().st_size // 1024} KB")
-    print(f"{OUT_WEBP.relative_to(ROOT)}: {OUT_WEBP.stat().st_size // 1024} KB")
+        if args.typing_gif or args.typing_proof:
+            t_dir = tmp_dir / "typing_frames"
+            t_dir.mkdir()
+            for f in range(N_FRAMES):
+                surf = render_typing_frame(f, sprites, seqs)
+                out_png = t_dir / f"frame_{f:03d}.png"
+                surf.write_to_png(str(out_png))
+                if args.typing_proof and f == 18:
+                    Path(args.typing_proof).write_bytes(out_png.read_bytes())
+            _encode_sequence(t_dir, tmp_dir, "typing", OUT_TYPING_GIF)
 
 
 if __name__ == "__main__":

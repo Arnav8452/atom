@@ -12,6 +12,7 @@ Usage:
   python3 tools/trigger_state.py --gallery                # open browser grid of all 19 states x moods
   python3 tools/trigger_state.py --limit gemini-3-pro     # simulate 5h/weekly limit sleep
   python3 tools/trigger_state.py --clear-limit gemini-3-pro
+  python3 tools/trigger_state.py --model carbon           # switch active model outfit (v2-wardrobe)
   python3 tools/trigger_state.py --list                   # list all 19 supported states
 
 Writes directly to ~/.antigravity-atom (or ATOM_HOME) and sends a wakeup ping
@@ -76,6 +77,12 @@ def set_limit(model: str, limited: bool) -> None:
     print(f"[atom] limit {verb}: {model}")
 
 
+def set_model(model: str) -> None:
+    atom_hook.update_model_limits(atom_hook.HOME, model, None, time.time())
+    atom_hook.notify_launcher()
+    print(f"[atom] model: {model}")
+
+
 class _QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         pass
@@ -122,6 +129,7 @@ def main() -> None:
     ap.add_argument("--no-open", action="store_true", help="Do not open web browser automatically with --gallery")
     ap.add_argument("--limit", help="Simulate 5h/weekly quota limit reached on MODEL (puts Atom to sleep)")
     ap.add_argument("--clear-limit", help="Clear simulated quota limit for MODEL")
+    ap.add_argument("--model", help="Set active Antigravity model name (updates live wardrobe outfit)")
     ap.add_argument("--delay", type=float, default=2.5, help="Seconds per state during --tour/--tour-all")
     args = ap.parse_args()
 
@@ -129,6 +137,11 @@ def main() -> None:
         print("Base states:", ", ".join(atom_launch.BASE_STATES))
         print("Reactions:  ", ", ".join(sorted(atom_launch.REACTIONS)))
         return
+
+    if args.model:
+        set_model(args.model)
+        if not args.state and not args.tour and not args.tour_all:
+            return
 
     if args.limit:
         set_limit(args.limit, True)

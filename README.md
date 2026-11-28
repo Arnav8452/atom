@@ -295,7 +295,8 @@ uv run --with pillow tools/make_sprite.py sad_render.gif atom sad --center-x 417
 ```
 
 A second folder under `assets/` becomes a second skin; with more than one,
-`Shift+click` on Atom's body switches between them.
+`Shift+click` on Atom's body switches between them. A fresh install starts as
+**Atom V2** (`assets/v2`); the skin you pick is remembered from then on.
 
 `--center-x` is the x of the body's centre in the render; feet are assumed at
 y≈222, so every state lines up. If a haze shows around the sprite, raise

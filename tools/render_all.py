@@ -15,6 +15,7 @@ Needs only stdlib + python-cairo + ffmpeg.
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 import subprocess
@@ -27,8 +28,12 @@ import cairo
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+import tools.render_base_qt as RBQ  # noqa: E402
+import tools.render_chibi as RCH  # noqa: E402
 import tools.render_gemini_typing as R  # noqa: E402
 import tools.render_idle as RI  # noqa: E402
+import tools.render_v2 as RV2  # noqa: E402
+import tools.render_v2_wardrobe as RV2W  # noqa: E402
 
 W, H, FPS = R.W, R.H, R.FPS
 OUT_DIR = ROOT / "assets" / "atom"
@@ -52,9 +57,38 @@ TYPING_INTRO_SEQ = [0, 1, 2, 4, 5, 6, 7]
 TYPING_LOOP_SEQ = list(range(8, 18)) * 3
 TYPING_OUTRO_SEQ = [18, 19, 20, 21, 22, 23, 24, 24, 25, 26, 27, 28, 29]
 
-
 def _rgb(r: int, g: int, b: int) -> Tuple[float, float, float]:
     return (r / 255.0, g / 255.0, b / 255.0)
+
+
+SKIN_META = {
+    "base-qt": {
+        "name": "base qt.",
+        "tagline": "Original base.gif · legless, white electrons, no beanie",
+        "accent": "#38bdf8",
+        "order": 1,
+    },
+    "v2": {
+        "name": "Atom V2",
+        "tagline": "Pom-Pom squishy blob · rainbow beanie",
+        "accent": "#f472b6",
+        "order": 2,
+    },
+    "chibi": {
+        "name": "Cozy Chibi",
+        "tagline": "Cat-ear rainbow beanie · oversized cream hoodie",
+        "accent": "#fde68a",
+        "order": 3,
+    },
+    "v2-wardrobe": {
+        "name": "Nobility Outfits",
+        "tagline": "Model-reactive rank attire",
+        "accent": "#fbbf24",
+        "order": 4,
+        "defaultVariant": "carbon",
+        "variants": ["carbon", "neon", "hydrogen", "orchestrator"],
+    },
+}
 
 
 def _rgb_to_hsv(r: int, g: int, b: int) -> Tuple[float, float, float]:
@@ -128,17 +162,18 @@ def tint_body_rgb(
     rest_val: float = 1.0,
     top_contour: Dict[int, int] | None = None,
     blend: float = 1.0,
+    preserve_beanie: bool = True,
 ) -> None:
-    """Recolor Atom's blue body pixels below the rainbow crown while leaving beanie intact."""
+    """Recolor Atom's blue body pixels, preserving the rainbow crown when present."""
     if blend <= 0.0:
         return
     hx0, hx1, _ = head
-    if top_contour is None:
+    if preserve_beanie and top_contour is None:
         top_contour = R.compute_head_top_contour(fg_rgb, head)
     for y in range(0, 249):
         row_off = y * W
         for x in range(max(0, hx0 - 25), min(W, hx1 + 25)):
-            if x in top_contour:
+            if preserve_beanie and top_contour is not None and x in top_contour:
                 depth = 15 if (x <= hx0 + 7 or x >= hx1 - 7) else 11
                 if y < top_contour[x] + depth:
                     continue  # preserve rainbow beanie
@@ -160,7 +195,9 @@ def tint_body_rgb(
                 fg_rgb[i + 2] = round(R.lerp(b, tb, blend))
 
 
-def tuck_legs(fg_rgb: bytearray, head: Tuple[int, int, int], retract_u: float) -> None:
+def tuck_legs(
+    fg_rgb: bytearray, head: Tuple[int, int, int], retract_u: float, preserve_laptop: bool = False
+) -> None:
     """Smoothly pull Atom's pixel legs up into the torso bottom (and back out)."""
     if retract_u <= 0.0:
         return
@@ -168,6 +205,28 @@ def tuck_legs(fg_rgb: bytearray, head: Tuple[int, int, int], retract_u: float) -
     leg_top = hy0 + 85
     leg_bot = hy0 + 103
     shift = round(R.clamp(retract_u) * 16)
+    if preserve_laptop:
+        for y in range(leg_top, min(H, leg_bot + 10)):
+            for x in range(max(0, hx0 - 12), min(W, hx1 + 2)):
+                i = (y * W + x) * 3
+                if fg_rgb[i + 2] > fg_rgb[i] + 20:
+                    _set_px(fg_rgb, x, y, (0, 0, 0))
+        if retract_u >= 0.85:
+            # Trim 2x2 corner-bottom jut pixels on the rounded base so the bottom stays smooth
+            for y in range(leg_top - 3, leg_top + 1):
+                for x in (*range(max(0, hx0 - 2), hx0 + 12), *range(hx1 - 12, min(W, hx1 + 2))):
+                    i = (y * W + x) * 3
+                    if fg_rgb[i + 2] > fg_rgb[i] + 20:
+                        if y >= leg_top - 1 and (x < hx0 + 8 or x >= hx1 - 8):
+                            _set_px(fg_rgb, x, y, (0, 0, 0))
+            for x in range(max(0, hx0 + 8), min(W, hx1 - 8)):
+                i = ((leg_top - 1) * W + x) * 3
+                if fg_rgb[i + 2] > fg_rgb[i] + 20:
+                    _set_px(
+                        fg_rgb, x, leg_top - 1,
+                        (round(fg_rgb[i] * 0.72), round(fg_rgb[i + 1] * 0.72), round(fg_rgb[i + 2] * 0.72)),
+                    )
+        return
     if shift > 0 and retract_u < 1.0:
         for y in range(leg_top, leg_bot - shift):
             sy = y + shift
@@ -340,7 +399,7 @@ def draw_pixel_rect(
 def render_frame(
     base_clean: bytearray,
     head: Tuple[int, int, int],
-    crown_cols: List[Tuple[int, int, int]],
+    crown_cols: List[Tuple[int, int, int]] | None,
     blobs: Sequence[Tuple[float, float, float, int, int]] = (),
     trails: Sequence[Tuple[float, float, float, int, int]] = (),
     sparkles: Sequence[Tuple[float, float, float, int, Tuple[float, float, float]]] = (),
@@ -348,6 +407,7 @@ def render_frame(
     tint: Tuple[float, float, float, float, float] | None = None,
     tint_blend: float = 1.0,
     leg_retract: float = 0.0,
+    preserve_laptop: bool = False,
     back_fn=None,
     front_fn=None,
     body_offset: Tuple[int, int] = (0, 0),
@@ -356,14 +416,20 @@ def render_frame(
 ) -> cairo.ImageSurface:
     """Composite one transparent 640x360 RGBA frame (back -> character -> front -> overlay)."""
     fg_rgb = bytearray(base_clean)
-    top_contour = R.compute_head_top_contour(fg_rgb, head) if (tint is not None and tint_blend > 0.0) else None
-    R.paint_crown_on_frame(fg_rgb, head, crown_cols)
+    preserve = crown_cols is not None
+    top_contour = (
+        R.compute_head_top_contour(fg_rgb, head)
+        if (preserve and tint is not None and tint_blend > 0.0)
+        else None
+    )
+    if crown_cols is not None:
+        R.paint_crown_on_frame(fg_rgb, head, crown_cols)
     if tint is not None and tint_blend > 0.0:
-        tint_body_rgb(fg_rgb, head, *tint, top_contour=top_contour, blend=tint_blend)
+        tint_body_rgb(fg_rgb, head, *tint, top_contour=top_contour, blend=tint_blend, preserve_beanie=preserve)
     if eye_spec is not None:
         paint_eyes(fg_rgb, head, *eye_spec)
     if leg_retract > 0.0:
-        tuck_legs(fg_rgb, head, leg_retract)
+        tuck_legs(fg_rgb, head, leg_retract, preserve_laptop=preserve_laptop)
     fg_mask = R.build_foreground_mask(fg_rgb, head)
 
     surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H)
@@ -429,7 +495,7 @@ def render_idle(
     heads: List[Tuple[int, int, int]],
     crowns: List[List[Tuple[int, int, int]]],
 ) -> Tuple[List[cairo.ImageSurface], Tuple[int, int]]:
-    """Authentic base.gif organic revolving electrons on clean hover body + thin beanie."""
+    """Authentic base.gif organic revolving electrons on clean hover body."""
     n = len(base)
     anchors = [RI.head_anchor(h) for h in heads]
     pixels = [RI.electron_pixels(f, base[f]) for f in range(n)]
@@ -443,11 +509,10 @@ def render_idle(
         rgb = bytearray(clean[bf])
         if f in (14, 15):
             paint_eyes(rgb, heads[bf], "blink")
-        crown_cols = sample_crown_at_phase(crowns, f / float(n))
         surf = RI.render_rgba_frame(
             rgb,
             heads[bf],
-            crown_cols,
+            sample_crown_at_phase(crowns, f / float(n)),
             frame_blobs[f],
             colours[f],
             pixels[f],
@@ -527,7 +592,7 @@ def render_thinking(
     heads: List[Tuple[int, int, int]],
     crowns: List[List[Tuple[int, int, int]]],
 ) -> Tuple[List[cairo.ImageSurface], Tuple[int, int]]:
-    """Sky-blue Atom with tucked legs during thinking, slow elevated orbits, and head sparkles."""
+    """Thinking animation with Gemini rainbow crown & orbital electron trails."""
     n_intro, n_loop, n_outro = 7, 30, 7
     total = n_intro + n_loop + n_outro
     body_seq = [0, 1, 2, 3, 3, 4, 5] + (HOVER_10 * 3) + [5, 4, 3, 2, 1, 1, 0]
@@ -683,6 +748,7 @@ def render_typing(
 
         blobs.sort(key=lambda item: item[0])
         trails.sort(key=lambda item: item[0])
+
         frames.append(
             render_frame(
                 clean[bf],
@@ -770,7 +836,9 @@ def render_running(
         frames.append(
             render_frame(
                 clean[bf], head, sample_crown_at_phase(crowns, phase),
-                blobs, trails, eye_spec=eye_spec, custom_colors=term_colors, overlay_fn=overlay
+                blobs, trails, eye_spec=eye_spec,
+                custom_colors=term_colors,
+                overlay_fn=overlay,
             )
         )
     return frames, (n_intro, n_intro + n_loop - 1)
@@ -879,18 +947,22 @@ def render_exploring(
     return frames, (n_intro, n_intro + n_loop - 1)
 
 
-def _draw_mini_atom(ctx: cairo.Context, cx: int, cy: int, alpha: float) -> None:
+def _draw_mini_atom(
+    ctx: cairo.Context, cx: int, cy: int, alpha: float, beanie: bool = True
+) -> None:
     if alpha <= 0.05:
         return
-    # 18x14 pixel mini-Atom buddy with thin rainbow strip + 2x2 eyes
+    # 18x14 pixel mini-Atom buddy (+ optional rainbow strip) + 3x3 eyes
     x0, y0 = cx - 9, cy - 7
-    draw_pixel_rect(ctx, x0, y0 + 2, 18, 10, _rgb(46, 161, 244), alpha)
+    if beanie:
+        draw_pixel_rect(ctx, x0, y0 + 2, 18, 10, _rgb(46, 161, 244), alpha)
+        strip = (_rgb(90, 230, 255), _rgb(130, 160, 255), _rgb(255, 130, 220), _rgb(255, 230, 100))
+        for i, col in enumerate(strip):
+            draw_pixel_rect(ctx, x0 + i * 4 + 1, y0, 4, 2, col, alpha)
+    else:
+        draw_pixel_rect(ctx, x0, y0 + 1, 18, 11, _rgb(46, 161, 244), alpha)
     draw_pixel_rect(ctx, x0 + 3, y0 + 12, 4, 2, _rgb(36, 130, 210), alpha)
     draw_pixel_rect(ctx, x0 + 11, y0 + 12, 4, 2, _rgb(36, 130, 210), alpha)
-    # Rainbow strip across top
-    strip = (_rgb(90, 230, 255), _rgb(130, 160, 255), _rgb(255, 130, 220), _rgb(255, 230, 100))
-    for i, col in enumerate(strip):
-        draw_pixel_rect(ctx, x0 + i * 4 + 1, y0, 4, 2, col, alpha)
     draw_pixel_rect(ctx, x0 + 4, y0 + 5, 3, 3, _rgb(10, 14, 20), alpha)
     draw_pixel_rect(ctx, x0 + 11, y0 + 5, 3, 3, _rgb(10, 14, 20), alpha)
 
@@ -941,7 +1013,7 @@ def render_delegating(
                     u_dot = step / 3.0
                     lx = round(R.lerp(acx, bx, u_dot))
                     ly = round(R.lerp(ahy + 4, by, u_dot))
-                    col = R.ELECTRONS[(idx * 2) % len(R.ELECTRONS)].color
+                    col = [sp.color for sp in R.ELECTRONS][(idx * 2) % len(R.ELECTRONS)]
                     if (fr + step) % 2 == 0 or weight > 0.8:
                         draw_pixel_rect(ctx, lx - 1, ly - 1, 3, 3, col, weight * 0.85)
                 _draw_mini_atom(ctx, bx, by, weight)
@@ -1441,7 +1513,7 @@ def render_canceled(
 ) -> Tuple[List[cairo.ImageSurface], Tuple[int, int]]:
     """Sudden stop / wide O O surprised eyes + settling muted electrons."""
     n = 18
-    muted = [tuple(c * 0.65 + 0.2 for c in sp.color) for sp in R.ELECTRONS]
+    muted = [tuple(c * 0.65 + 0.2 for c in col) for col in [sp.color for sp in R.ELECTRONS]]
     frames = []
     for f in range(n):
         u = f / float(n)
@@ -1468,7 +1540,7 @@ def render_tired(
 ) -> Tuple[List[cairo.ImageSurface], Tuple[int, int]]:
     """Heavy droop, half-lidded eyes, and sliding temple sweat drop."""
     n = 24
-    dim_colors = [tuple(c * 0.6 + 0.1 for c in sp.color) for sp in R.ELECTRONS]
+    dim_colors = [tuple(c * 0.6 + 0.1 for c in col) for col in [sp.color for sp in R.ELECTRONS]]
     frames = []
     for f in range(n):
         u = f / float(n)
@@ -1517,7 +1589,7 @@ def render_closed(
     """Sleepy dim Atom with lowered closed eyes, slow breathing, and rising Zzz."""
     n = 30
     sleep_seq = [5, 5, 5, 4, 4, 4, 3, 3, 4, 4] * 3
-    dim_colors = [tuple(c * 0.45 + 0.08 for c in sp.color) for sp in R.ELECTRONS]
+    dim_colors = [tuple(c * 0.45 + 0.08 for c in col) for col in [sp.color for sp in R.ELECTRONS]]
     frames = []
     for f in range(n):
         u = f / float(n)
@@ -1546,9 +1618,13 @@ def render_closed(
 
 
 def save_sheet(
-    state: str, frames: List[cairo.ImageSurface], loop: Tuple[int, int], frame_ms: int | None = None
+    state: str,
+    frames: List[cairo.ImageSurface],
+    loop: Tuple[int, int],
+    frame_ms: int | None = None,
+    out_dir: Path = OUT_DIR,
 ) -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
     n = len(frames)
     cols = min(COLS, n)
     rows = -(-n // cols)
@@ -1561,15 +1637,19 @@ def save_sheet(
         ctx.save()
         ctx.rectangle(dx, dy, FRAME_W, FRAME_H)
         ctx.clip()
-        ctx.translate(dx, dy)
-        ctx.scale(FRAME_W / float(CROP_W), FRAME_H / float(CROP_H))
-        ctx.set_source_surface(fr, -CROP_LEFT, -CROP_TOP)
-        ctx.get_source().set_filter(cairo.FILTER_BEST)
+        if fr.get_width() == FRAME_W and fr.get_height() == FRAME_H:
+            ctx.set_source_surface(fr, dx, dy)
+            ctx.get_source().set_filter(cairo.FILTER_NEAREST)
+        else:
+            ctx.translate(dx, dy)
+            ctx.scale(FRAME_W / float(CROP_W), FRAME_H / float(CROP_H))
+            ctx.set_source_surface(fr, -CROP_LEFT, -CROP_TOP)
+            ctx.get_source().set_filter(cairo.FILTER_BEST)
         ctx.paint()
         ctx.restore()
 
-    webp_path = OUT_DIR / f"{state}.webp"
-    json_path = OUT_DIR / f"{state}.json"
+    webp_path = out_dir / f"{state}.webp"
+    json_path = out_dir / f"{state}.json"
     with tempfile.TemporaryDirectory(prefix=f"atom_{state}_") as tmp:
         png_path = Path(tmp) / f"{state}.png"
         sheet.write_to_png(str(png_path))
@@ -1601,46 +1681,85 @@ def save_sheet(
     }
     json_path.write_text(json.dumps(meta) + "\n")
     print(
-        f"assets/atom/{state}.webp: {n} frames, loop {loop[0]}..{loop[1]}, "
+        f"assets/{out_dir.name}/{state}.webp: {n} frames, loop {loop[0]}..{loop[1]}, "
         f"{webp_path.stat().st_size // 1024} KB"
     )
 
 
 def main() -> None:
-    requested = sys.argv[1:]
-    base = R.load_gif_frames(R.BASE_GIF)
-    gemini = R.load_gif_frames(R.GEMINI_GIF)
-    clean, heads = R.clean_base_frames(base)
-    crowns = R.sample_gemini_crowns(gemini)
+    ap = argparse.ArgumentParser(description="Render sprite sheets for Atom skins.")
+    ap.add_argument("--skin", choices=("atom", "base-qt", "v2", "chibi", "v2-wardrobe", "all"), default="atom")
+    ap.add_argument("--variant", choices=(*RV2W.VARIANTS, "all"), default="all", help="Wardrobe outfit variant")
+    ap.add_argument("states", nargs="*", help="Specific states to rebuild (default: all 19)")
+    args = ap.parse_args()
 
-    builders = {
-        "idle": lambda: render_idle(base, clean, heads, crowns),
-        "thinking": lambda: render_thinking(clean, heads, crowns),
-        "typing": lambda: render_typing(clean, heads, crowns),
-        "working": lambda: render_working(clean, heads, crowns),
-        "exploring": lambda: render_exploring(clean, heads, crowns),
-        "running": lambda: render_running(clean, heads, crowns),
-        "delegating": lambda: render_delegating(clean, heads, crowns),
-        "asking": lambda: render_asking(clean, heads, crowns),
-        "listening": lambda: render_listening(clean, heads, crowns),
-        "watching": lambda: render_watching(clean, heads, crowns),
-        "done": lambda: render_done(clean, heads, crowns),
-        "happy": lambda: render_happy(clean, heads, crowns),
-        "dance": lambda: render_dance(clean, heads, crowns),
-        "sad": lambda: render_sad(clean, heads, crowns),
-        "angry": lambda: render_angry(clean, heads, crowns),
-        "error": lambda: render_error(clean, heads, crowns),
-        "canceled": lambda: render_canceled(clean, heads, crowns),
-        "tired": lambda: render_tired(clean, heads, crowns),
-        "closed": lambda: render_closed(clean, heads, crowns),
-    }
-    targets = requested if requested else list(builders.keys())
-    for name in targets:
-        if name not in builders:
-            raise SystemExit(f"Unknown state: {name}")
-        res = builders[name]()
-        frames, loop, frame_ms = res if len(res) == 3 else (res[0], res[1], None)
-        save_sheet(name, frames, loop, frame_ms=frame_ms)
+    skin_ids = ["atom", "base-qt", "v2", "chibi", "v2-wardrobe"] if args.skin == "all" else [args.skin]
+    need_base = any(s in skin_ids for s in ("atom", "base-qt"))
+    base = R.load_gif_frames(R.BASE_GIF) if need_base else []
+    clean, heads = R.clean_base_frames(base) if need_base else ([], [])
+    crowns = None
+    if "atom" in skin_ids:
+        gemini = R.load_gif_frames(R.GEMINI_GIF)
+        crowns = R.sample_gemini_crowns(gemini)
+
+    for skin_id in skin_ids:
+        out_dir = ROOT / "assets" / skin_id
+        if skin_id == "v2-wardrobe":
+            variants = list(RV2W.VARIANTS) if args.variant == "all" else [args.variant]
+            for variant in variants:
+                v_dir = out_dir if variant == RV2W.DEFAULT_VARIANT else out_dir / "variants" / variant
+                v_dir.mkdir(parents=True, exist_ok=True)
+                builders = RV2W.build_renderers(sys.modules[__name__], variant=variant)
+                targets = args.states if args.states else list(builders.keys())
+                for name in targets:
+                    if name not in builders:
+                        raise SystemExit(f"Unknown state: {name}")
+                    res = builders[name]()
+                    frames, loop, frame_ms = res if len(res) == 3 else (res[0], res[1], None)
+                    save_sheet(name, frames, loop, frame_ms=frame_ms, out_dir=v_dir)
+            if skin_id in SKIN_META:
+                out_dir.mkdir(parents=True, exist_ok=True)
+                (out_dir / "skin.json").write_text(json.dumps(SKIN_META[skin_id], indent=2) + "\n")
+            continue
+        if skin_id == "base-qt":
+            builders = RBQ.build_renderers(sys.modules[__name__], base, clean, heads)
+        elif skin_id == "v2":
+            builders = RV2.build_renderers(sys.modules[__name__])
+        elif skin_id == "chibi":
+            builders = RCH.build_renderers(sys.modules[__name__])
+        else:
+            assert crowns is not None
+            builders = {
+                "idle": lambda: render_idle(base, clean, heads, crowns),
+                "thinking": lambda: render_thinking(clean, heads, crowns),
+                "typing": lambda: render_typing(clean, heads, crowns),
+                "working": lambda: render_working(clean, heads, crowns),
+                "exploring": lambda: render_exploring(clean, heads, crowns),
+                "running": lambda: render_running(clean, heads, crowns),
+                "delegating": lambda: render_delegating(clean, heads, crowns),
+                "asking": lambda: render_asking(clean, heads, crowns),
+                "listening": lambda: render_listening(clean, heads, crowns),
+                "watching": lambda: render_watching(clean, heads, crowns),
+                "done": lambda: render_done(clean, heads, crowns),
+                "happy": lambda: render_happy(clean, heads, crowns),
+                "dance": lambda: render_dance(clean, heads, crowns),
+                "sad": lambda: render_sad(clean, heads, crowns),
+                "angry": lambda: render_angry(clean, heads, crowns),
+                "error": lambda: render_error(clean, heads, crowns),
+                "canceled": lambda: render_canceled(clean, heads, crowns),
+                "tired": lambda: render_tired(clean, heads, crowns),
+                "closed": lambda: render_closed(clean, heads, crowns),
+            }
+        targets = args.states if args.states else list(builders.keys())
+        for name in targets:
+            if name not in builders:
+                raise SystemExit(f"Unknown state: {name}")
+            res = builders[name]()
+            frames, loop, frame_ms = res if len(res) == 3 else (res[0], res[1], None)
+            save_sheet(name, frames, loop, frame_ms=frame_ms, out_dir=out_dir)
+        if skin_id in SKIN_META:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "skin.json").write_text(json.dumps(SKIN_META[skin_id], indent=2) + "\n")
 
 
 if __name__ == "__main__":

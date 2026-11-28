@@ -1,0 +1,13 @@
+{
+  "name": "Nobility Outfits",
+  "tagline": "Model-reactive rank attire",
+  "accent": "#fbbf24",
+  "order": 4,
+  "defaultVariant": "carbon",
+  "variants": [
+    "carbon",
+    "neon",
+    "hydrogen",
+    "orchestrator"
+  ]
+}

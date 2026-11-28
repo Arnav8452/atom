@@ -20,10 +20,14 @@ pkgver() {
 package() {
   cd "${srcdir}/${pkgname}"
 
-  install -d "${pkgdir}/opt/antigravity-atom/assets/atom"
-  install -m644 plugin.json hooks.json atom_inject.js LICENSE README.md "${pkgdir}/opt/antigravity-atom/"
+  install -d "${pkgdir}/opt/antigravity-atom/assets"
+  install -m644 plugin.json hooks.json atom_inject.js atom_lab.js LICENSE README.md "${pkgdir}/opt/antigravity-atom/"
   install -m755 atom_hook.py atom_launch.py install.sh "${pkgdir}/opt/antigravity-atom/"
-  cp -r assets/atom/* "${pkgdir}/opt/antigravity-atom/assets/atom/"
+  for skin_dir in assets/*/; do
+    skin_name="$(basename "${skin_dir}")"
+    install -d "${pkgdir}/opt/antigravity-atom/assets/${skin_name}"
+    cp -r "${skin_dir}"* "${pkgdir}/opt/antigravity-atom/assets/${skin_name}/"
+  done
 
   install -d "${pkgdir}/usr/bin"
   cat > "${pkgdir}/usr/bin/antigravity-atom" <<'EOF'

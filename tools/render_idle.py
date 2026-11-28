@@ -133,15 +133,17 @@ def assign_colours(frame_blobs, anchors):
 def render_rgba_frame(
     clean_rgb: bytearray,
     head: tuple[int, int, int],
-    crown_cols: list[tuple[int, int, int]],
+    crown_cols: list[tuple[int, int, int]] | None,
     frame_blobs: list,
     frame_colours: list[int],
     frame_pixels: dict,
     anchor_src: tuple[float, float],
     anchor_dst: tuple[float, float],
+    palette: list[tuple[int, int, int]] | None = None,
 ) -> cairo.ImageSurface:
     rgb = bytearray(clean_rgb)
-    R.paint_crown_on_frame(rgb, head, crown_cols)
+    if crown_cols is not None:
+        R.paint_crown_on_frame(rgb, head, crown_cols)
     fg_mask = R.build_foreground_mask(rgb, head)
     buf = bytearray(W * H * 4)
     for idx in range(W * H):
@@ -152,10 +154,11 @@ def render_rgba_frame(
             buf[i4 + 2] = rgb[i3]
             buf[i4 + 3] = 255
 
+    pal = palette if palette is not None else PALETTE
     dx = round(anchor_dst[0] - anchor_src[0])
     dy = round(anchor_dst[1] - anchor_src[1])
     for (pts, (cx, cy)), ci in zip(sorted(frame_blobs, key=lambda b: -len(b[0])), frame_colours):
-        colour = PALETTE[ci]
+        colour = pal[ci % len(pal)]
         core = tuple(c + (255 - c) * CORE_WHITE for c in colour)
         radius = math.sqrt(len(pts) / math.pi)
         reach = radius + GLOW_PX

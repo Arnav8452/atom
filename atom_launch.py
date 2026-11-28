@@ -88,13 +88,14 @@ PRELOAD_ORDER = (
 )
 
 POLL_SEC = 0.5
-RESYNC_SEC = 5.0
+RESYNC_SEC = 1.0
 PRELOAD_INTERVAL_SEC = 0.4
 SLEEP_AFTER_SEC = 300       # nothing happening for 5 min -> closed
 TYPING_STALE_SEC = 180      # typing/reading/asking stuck this long -> ignored
 THINKING_STALE_SEC = 20 * 60
 PRUNE_AFTER_SEC = 24 * 3600
 MTIME_GUARD_SEC = 0.05
+FIRST_RUN_SKIN = "v2"  # skin shown until the user picks one (must match FIRST_SKIN in atom_inject.js)
 HUB_URL = re.compile(r"^https?://(127\.0\.0\.1|localhost):\d+/")
 
 
@@ -448,10 +449,91 @@ def load_skin_names(assets_dir: Path | None = None) -> list[str]:
     return sorted(names, key=lambda n: (0 if n == "atom" else 1, n))
 
 
-def load_state_payload(name: str, state: str, assets_dir: Path | None = None) -> dict | None:
+_VARIANT_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_VARIANT_ALIAS_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("orchestrator", ("orchestrator", "orchestrate", "coordinator", "planner", "plan", "swarm", "auto", "manager")),
+    ("hydrogen", ("hydrogen", "flash", "haiku", "lite", "mini", "nano", "fast", "small")),
+    ("neon", ("neon", "sonnet", "gpt", "balanced", "medium")),
+    ("carbon", ("carbon", "opus", "ultra", "pro", "heavy", "max", "o1", "o3")),
+)
+
+
+def load_skin_meta(name: str, assets_dir: Path | None = None) -> dict:
+    """Read optional skin.json metadata for a skin folder."""
+    base_dir = assets_dir or (ROOT / "assets")
+    meta_file = base_dir / name / "skin.json"
+    if not meta_file.is_file():
+        return {}
+    try:
+        loaded = json.loads(meta_file.read_text(encoding="utf-8"))
+        return loaded if isinstance(loaded, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def load_skin_variants(name: str, assets_dir: Path | None = None) -> tuple[list[str], str | None]:
+    """Return declared outfit variant names and default variant for a skin."""
+    base_dir = assets_dir or (ROOT / "assets")
+    skin_dir = base_dir / name
+    info = load_skin_meta(name, base_dir)
+    raw = info.get("variants")
+    if not isinstance(raw, list):
+        return [], None
+    dflt_raw = info.get("defaultVariant")
+    dflt = dflt_raw if isinstance(dflt_raw, str) and _VARIANT_RE.fullmatch(dflt_raw) else None
+    variants: list[str] = []
+    for item in raw:
+        if not isinstance(item, str) or not _VARIANT_RE.fullmatch(item) or item in variants:
+            continue
+        if item == dflt or (skin_dir / "variants" / item).is_dir():
+            variants.append(item)
+    if not variants:
+        return [], None
+    if dflt not in variants:
+        dflt = variants[0]
+    return variants, dflt
+
+
+def resolve_model_variant(
+    model_name: str, variants: list[str], default_variant: str | None = None
+) -> str | None:
+    """Map an active Antigravity model name onto a skin outfit variant."""
+    if not variants:
+        return None
+    fallback = default_variant if default_variant in variants else variants[0]
+    raw = str(model_name or "").strip().lower()
+    if not raw:
+        return fallback
+    tokens = set(re.findall(r"[a-z0-9]+", raw))
+    # Pass 1: exact explicit variant match (prioritize orchestrator/carbon/neon/hydrogen then any variant)
+    by_lower = {v.lower(): v for v in variants}
+    for vlow in ("orchestrator", "carbon", "neon", "hydrogen"):
+        if vlow in by_lower and vlow in tokens:
+            return by_lower[vlow]
+    for vlow, orig in by_lower.items():
+        if vlow in tokens:
+            return orig
+    # Pass 2: alias mapping
+    for target, aliases in _VARIANT_ALIAS_GROUPS:
+        if target in by_lower and any(a in tokens for a in aliases):
+            return by_lower[target]
+    return fallback
+
+
+def load_state_payload(
+    name: str, state: str, assets_dir: Path | None = None, variant: str | None = None
+) -> dict | None:
     if state not in STATES:
         return None
     base_dir = assets_dir or (ROOT / "assets")
+    if variant and _VARIANT_RE.fullmatch(variant):
+        vmeta = base_dir / name / "variants" / variant / f"{state}.json"
+        vsheet = vmeta.with_suffix(".webp")
+        if vmeta.exists() and vsheet.exists():
+            return {
+                **json.loads(vmeta.read_text(encoding="utf-8")),
+                "webp": base64.b64encode(vsheet.read_bytes()).decode(),
+            }
     meta = base_dir / name / f"{state}.json"
     sheet = meta.with_suffix(".webp")
     if not (meta.exists() and sheet.exists()):
@@ -478,15 +560,187 @@ def load_skin_payload(name: str, assets_dir: Path | None = None) -> dict:
     return out
 
 
-def build_bootstrap_script(skin_names: list[str] | None = None) -> str:
-    """atom_inject.js with only skin names inlined; WebP sprites load on demand."""
+_JS_MULTI_OPS = (
+    "...", "===", "!==", ">>>", "**=", "&&=", "||=", "??=",
+    "==", "!=", "<=", ">=", "&&", "||", "??", "=>",
+    "++", "--", "+=", "-=", "*=", "/=", "?.", "<<", ">>",
+)
+_JS_REGEX_PREV_WORDS = frozenset(
+    ("return", "typeof", "in", "of", "case", "throw", "yield", "await", "else", "new", "void", "delete")
+)
+
+
+def _compact_js(path: Path) -> str:
+    """Strip comments and non-significant horizontal whitespace from a JS file."""
+    js = path.read_text(encoding="utf-8")
+    tokens: list[tuple[str, str]] = []
+    i, n = 0, len(js)
+    while i < n:
+        ch = js[i]
+        if ch in ('"', "'", "`"):
+            q = ch
+            j = i + 1
+            while j < n:
+                if js[j] == "\\":
+                    j += 2
+                    continue
+                if js[j] == q:
+                    j += 1
+                    break
+                j += 1
+            tokens.append(("STR", js[i:j]))
+            i = j
+        elif ch == "/" and i + 1 < n and js[i + 1] == "/":
+            j = js.find("\n", i)
+            i = n if j < 0 else j
+        elif ch == "/" and i + 1 < n and js[i + 1] == "*":
+            j = js.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+        elif ch == "/":
+            prev = next((t for t in reversed(tokens) if t[0] not in ("WS", "NL")), None)
+            if (
+                prev is None
+                or (prev[0] == "OP" and prev[1] not in (")", "]", "++", "--"))
+                or prev[1] in _JS_REGEX_PREV_WORDS
+            ):
+                j = i + 1
+                in_cls = False
+                while j < n:
+                    if js[j] == "\\":
+                        j += 2
+                        continue
+                    if js[j] == "[":
+                        in_cls = True
+                    elif js[j] == "]":
+                        in_cls = False
+                    elif js[j] == "/" and not in_cls:
+                        j += 1
+                        break
+                    j += 1
+                while j < n and js[j].isalpha():
+                    j += 1
+                tokens.append(("REG", js[i:j]))
+                i = j
+            else:
+                tokens.append(("OP", "/"))
+                i += 1
+        elif ch == "\n":
+            tokens.append(("NL", "\n"))
+            i += 1
+        elif ch in " \t\r":
+            while i < n and js[i] in " \t\r":
+                i += 1
+            tokens.append(("WS", " "))
+        elif ch.isalnum() or ch in "_$":
+            j = i + 1
+            while j < n and (js[j].isalnum() or js[j] in "_$"):
+                j += 1
+            tokens.append(("ID", js[i:j]))
+            i = j
+        else:
+            for op in _JS_MULTI_OPS:
+                if js.startswith(op, i):
+                    tokens.append(("OP", op))
+                    i += len(op)
+                    break
+            else:
+                tokens.append(("OP", ch))
+                i += 1
+
+    out: list[str] = []
+    tlen = len(tokens)
+    for idx, (kind, val) in enumerate(tokens):
+        if kind == "WS":
+            p = tokens[idx - 1] if idx > 0 else None
+            nx = tokens[idx + 1] if idx + 1 < tlen else None
+            if p and nx and p[0] == "ID" and nx[0] == "ID":
+                out.append(" ")
+            elif p and nx and p[0] == "OP" and nx[0] == "OP" and p[1][-1] == nx[1][0] and p[1][-1] in "+-":
+                out.append(" ")
+        elif kind == "NL":
+            if out and out[-1] != "\n":
+                out.append("\n")
+        else:
+            out.append(val)
+    return "".join(out).strip()
+
+
+def load_skin_catalog(assets_dir: Path | None = None) -> list[dict]:
+    """Return sorted catalog metadata for each valid skin folder under assets_dir."""
+    base_dir = assets_dir or (ROOT / "assets")
+    catalog: list[dict] = []
+    for name in load_skin_names(base_dir):
+        skin_dir = base_dir / name
+        states = sum(
+            1 for meta in skin_dir.glob("*.json")
+            if meta.stem in STATES and meta.with_suffix(".webp").exists()
+        )
+        info = load_skin_meta(name, base_dir)
+        variants, _ = load_skin_variants(name, base_dir)
+        default_name = name.replace("-", " ").replace("_", " ").title()
+        accent = str(info.get("accent") or "#38bdf8").strip()
+        if not re.fullmatch(r"#[0-9a-fA-F]{3,8}", accent):
+            accent = "#38bdf8"
+        order = info.get("order")
+        tagline = info.get("tagline")
+        if tagline is None:
+            tagline = "Original companion" if name == "atom" else ""
+        entry: dict = {
+            "id": name,
+            "name": str(info.get("name") or default_name),
+            "tagline": str(tagline),
+            "accent": accent,
+            "states": states,
+            "_order": order if isinstance(order, (int, float)) else 999,
+        }
+        if variants:
+            entry["variants"] = variants
+        catalog.append(entry)
+    catalog.sort(key=lambda c: (0 if c["id"] == "atom" else 1, c["_order"], c["id"]))
+    for item in catalog:
+        item.pop("_order", None)
+    return catalog
+
+
+def load_prefs(home: Path) -> dict:
+    """Read lightweight persisted UI preferences (selected skin) from prefs.json."""
+    return read_json(home / "prefs.json")
+
+
+def save_prefs(home: Path, data: dict) -> None:
+    """Atomically persist UI preferences under ATOM_HOME with owner-only perms."""
+    home.mkdir(parents=True, exist_ok=True)
+    dst = home / "prefs.json"
+    tmp = home / f".prefs.{os.getpid()}.tmp"
+    payload = json.dumps(data, sort_keys=True) + "\n"
+    try:
+        tmp.write_text(payload, encoding="utf-8")
+        if os.name == "posix":
+            os.chmod(tmp, 0o600)
+        os.replace(tmp, dst)
+    except OSError:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def build_bootstrap_script(skin_names: list[str] | None = None, default_skin: str | None = None) -> str:
+    """atom_inject.js with skin names and saved skin inlined; WebP sprites load on demand."""
     names = load_skin_names() if skin_names is None else skin_names
-    js = (ROOT / "atom_inject.js").read_text(encoding="utf-8")
-    # Strip full-line comments, leading indentation, and blank lines for compact CDP injection.
-    js = re.sub(r"^\s*//.*\n", "", js, flags=re.M)
-    js = re.sub(r"^[ \t]+", "", js, flags=re.M)
-    js = re.sub(r"\n{2,}", "\n", js)
-    return js.replace("const SKIN_NAMES = __ATOM_SKIN_NAMES__;", f"const SKIN_NAMES = {json.dumps(names)};", 1)
+    return (
+        _compact_js(ROOT / "atom_inject.js")
+        .replace("__ATOM_SKIN_NAMES__", json.dumps(names), 1)
+        .replace('"__ATOM_DEFAULT_SKIN__"', json.dumps(default_skin or ""), 1)
+    )
+
+
+def build_lab_script(assets_dir: Path | None = None) -> str:
+    """atom_lab.js with skin catalog metadata inlined for lazy CDP injection."""
+    catalog = load_skin_catalog(assets_dir)
+    return _compact_js(ROOT / "atom_lab.js").replace(
+        "__ATOM_SKIN_CATALOG__", json.dumps(catalog), 1
+    )
 
 
 # --- DevTools transports (pipe on POSIX, WebSocket on Windows) ---------------
@@ -773,33 +1027,54 @@ class Atom:
         self.cdp = cdp
         self.assets_dir = assets_dir
         self.skin_names = load_skin_names(assets_dir)
+        self.skin_variants: dict[str, tuple[list[str], str | None]] = {
+            n: load_skin_variants(n, assets_dir) for n in self.skin_names
+        }
         self.skin_cache: dict[str, dict] = {}
-        self.state_cache: dict[tuple[str, str], dict | None] = {}
-        self.script = build_bootstrap_script(self.skin_names)
+        self.state_cache: dict[tuple[str, str | None, str], dict | None] = {}
+        self.state = state or StateReader()
+        prefs = load_prefs(self.state.home)
+        raw_saved = prefs.get("skin")
+        self.saved_skin: str | None = raw_saved if isinstance(raw_saved, str) and raw_saved in self.skin_names else None
+        self.first_skin = FIRST_RUN_SKIN if FIRST_RUN_SKIN in self.skin_names else (self.skin_names[0] if self.skin_names else "atom")
+        self.script = build_bootstrap_script(self.skin_names, default_skin=self.saved_skin)
+        self.lab_script = build_lab_script(assets_dir)
         self.sessions: dict[str, str] = {}   # targetId -> sessionId
         self.session_skin: dict[str, str] = {}
+        self.session_variant: dict[str, str | None] = {}
+        self.session_ui_model: dict[str, str] = {}
         self.loaded_states: dict[str, set[str]] = {}
+        self.preview_loaded: dict[str, set[tuple[str, str]]] = {}
         self.ready_sessions: set[str] = set()
+        self.lab_sessions: set[str] = set()
         self.probing_sessions: set[str] = set()
         self.loading_sessions: dict[str, str] = {}
         self.last_resync: dict[str, float] = {}
         self.attaching: set[str] = set()
-        self.state = state or StateReader()
         self.sent_base: str | None = None
         self.sent_mood: str | None = None
         self.sent_reaction: float | None = None
         self.sent_limit: tuple[bool, str, tuple[str, ...]] = (False, "", ())
+        self.last_hook_model: str = ""
         self.last_preload = 0.0
+
+    def has_variants(self, name: str) -> bool:
+        variants, _ = self.skin_variants.get(name, ([], None))
+        return bool(variants)
+
+    def _resolve_variant(self, name: str, model_name: str = "") -> str | None:
+        variants, dflt = self.skin_variants.get(name, ([], None))
+        return resolve_model_variant(model_name, variants, dflt) if variants else None
 
     def get_skin_payload(self, name: str) -> dict:
         if name not in self.skin_cache:
             self.skin_cache[name] = load_skin_payload(name, self.assets_dir)
         return self.skin_cache[name]
 
-    def get_state_payload(self, name: str, state: str) -> dict | None:
-        key = (name, state)
+    def get_state_payload(self, name: str, state: str, variant: str | None = None) -> dict | None:
+        key = (name, variant, state)
         if key not in self.state_cache:
-            self.state_cache[key] = load_state_payload(name, state, self.assets_dir)
+            self.state_cache[key] = load_state_payload(name, state, self.assets_dir, variant=variant)
         return self.state_cache[key]
 
     def start(self) -> None:
@@ -807,19 +1082,41 @@ class Atom:
 
     def _drop_session(self, sid: str) -> None:
         self.ready_sessions.discard(sid)
+        self.lab_sessions.discard(sid)
         self.probing_sessions.discard(sid)
         self.loading_sessions.pop(sid, None)
         self.last_resync.pop(sid, None)
         self.session_skin.pop(sid, None)
+        self.session_variant.pop(sid, None)
+        self.session_ui_model.pop(sid, None)
         self.loaded_states.pop(sid, None)
+        self.preview_loaded.pop(sid, None)
 
-    def ensure_state(self, session: str, skin: str, state: str, then=None) -> bool:
+    def ensure_preview_state(self, session: str, skin: str, state: str = "idle") -> bool:
+        loaded = self.preview_loaded.setdefault(session, set())
+        if (skin, state) in loaded:
+            return False
+        data = self.get_state_payload(skin, state)
+        if not data:
+            return False
+        loaded.add((skin, state))
+        self.cdp.send(
+            "Runtime.evaluate",
+            {"expression": f"window.__atom&&__atom.__loadState({json.dumps(skin)},{json.dumps(state)},{json.dumps(data)},true)"},
+            session,
+        )
+        return True
+
+    def ensure_state(
+        self, session: str, skin: str, state: str, then=None, variant: str | None = None
+    ) -> bool:
         loaded = self.loaded_states.setdefault(session, set())
         if state in loaded:
             if then:
                 then({})
             return False
-        data = self.get_state_payload(skin, state)
+        use_variant = variant if variant is not None else self.session_variant.get(session)
+        data = self.get_state_payload(skin, state, variant=use_variant)
         if not data:
             if then:
                 then({})
@@ -832,6 +1129,30 @@ class Atom:
             then=then,
         )
         return True
+
+    def _switch_session_variant(self, session: str, skin: str, new_variant: str | None) -> None:
+        if new_variant == self.session_variant.get(session):
+            return
+        self.session_variant[session] = new_variant
+        self.loaded_states[session] = set()
+        pre = self.preview_loaded.get(session)
+        if pre:
+            pre.difference_update({(s, st) for (s, st) in pre if s == skin})
+        self.cdp.send(
+            "Runtime.evaluate",
+            {"expression": f"window.__atom&&__atom.__resetSkin({json.dumps(skin)})"},
+            session,
+        )
+        base, _, _ = self.state.snapshot()
+        lim = self.state.limit_info()
+        initial: list[str] = []
+        for st in (base, *CORE_STATES):
+            if st not in initial:
+                initial.append(st)
+        if lim["activeLimited"] and "closed" not in initial:
+            initial.append("closed")
+        for st in initial:
+            self.ensure_state(session, skin, st, variant=new_variant)
 
     def handle(self, msg: dict) -> None:
         if "id" in msg:
@@ -859,19 +1180,38 @@ class Atom:
         if session in self.probing_sessions or session not in self.sessions.values():
             return
         self.probing_sessions.add(session)
+        cur_skin = self.session_skin.get(session, "")
+        watch_model = (session in self.ready_sessions) and self.has_variants(cur_skin)
 
         def on_probe(result: dict) -> None:
             self.probing_sessions.discard(session)
             if session not in self.sessions.values():
                 return
-            val = ((result or {}).get("result") or {}).get("value")
+            raw_val = ((result or {}).get("result") or {}).get("value")
+            ui_model = ""
+            if isinstance(raw_val, dict) and "n" in raw_val:
+                val = raw_val.get("n")
+                ui_model = str(raw_val.get("m") or "").strip()
+            else:
+                val = raw_val
             now_mono = time.monotonic()
+
+            ui_changed = False
+            if watch_model and ui_model != self.session_ui_model.get(session, ""):
+                self.session_ui_model[session] = ui_model
+                ui_changed = True
+
             if isinstance(val, str) and val in self.skin_names:
                 if self.loading_sessions.get(session) == val:
                     return
+                if (session in self.ready_sessions or (self.saved_skin is None and val != self.first_skin)) and val != self.saved_skin:
+                    self.saved_skin = val
+                    save_prefs(self.state.home, {"skin": val})
+                    self.script = build_bootstrap_script(self.skin_names, default_skin=self.saved_skin)
                 self.loading_sessions[session] = val
                 self.session_skin[session] = val
                 self.loaded_states[session] = set()
+                preloaded = self.preview_loaded.get(session, set())
 
                 def on_loaded(_res: dict) -> None:
                     if self.loading_sessions.get(session) == val:
@@ -879,13 +1219,25 @@ class Atom:
 
                 base, mood, _ = self.state.snapshot()
                 lim = self.state.limit_info()
+                _, dflt_var = self.skin_variants.get(val, ([], None))
+                variant = self._resolve_variant(val, self.session_ui_model.get(session) or lim.get("activeModel", ""))
+                self.session_variant[session] = variant
+                reuse_preview = (not self.has_variants(val)) or (variant == dflt_var)
+
                 initial = list(CORE_STATES)
                 if base not in initial:
                     initial.append(base)
                 if lim["activeLimited"] and "closed" not in initial:
                     initial.append("closed")
-                for idx, st in enumerate(initial):
-                    self.ensure_state(session, val, st, then=on_loaded if idx == 0 else None)
+                sent_cb = False
+                for st in initial:
+                    if reuse_preview and (val, st) in preloaded:
+                        self.loaded_states[session].add(st)
+                        continue
+                    self.ensure_state(session, val, st, then=(None if sent_cb else on_loaded), variant=variant)
+                    sent_cb = True
+                if not sent_cb:
+                    self.loading_sessions.pop(session, None)
                 lim_expr = (
                     f",__atom.setLimit({json.dumps(lim)})"
                     if (lim["activeLimited"] or lim["limitedModels"] or lim["activeModel"])
@@ -893,18 +1245,45 @@ class Atom:
                 )
                 self.cdp.send(
                     "Runtime.evaluate",
-                    {"expression": f"window.__atom&&(__atom.setBase({json.dumps(base)}),__atom.setMood({json.dumps(mood)}){lim_expr})"},
+                    {"expression": f"window.__atom&&(__atom.setBase({json.dumps(base)}),__atom.setMood({json.dumps(mood)}),__atom.__markSynced({json.dumps(val)}){lim_expr})"},
                     session,
                 )
                 self.sent_limit = (bool(lim["activeLimited"]), lim["activeModel"], tuple(lim["limitedModels"]))
+                if lim.get("activeModel"):
+                    self.last_hook_model = str(lim["activeModel"]).strip()
                 self.ready_sessions.add(session)
+                self.last_resync[session] = 0.0 if (self.has_variants(val) and session not in self.session_ui_model) else now_mono
+                return
+
+            if ui_changed:
+                active_skin = self.session_skin.get(session, "")
+                if self.has_variants(active_skin):
+                    lim = self.state.limit_info()
+                    target_var = self._resolve_variant(active_skin, ui_model or lim.get("activeModel", ""))
+                    if target_var != self.session_variant.get(session):
+                        self._switch_session_variant(session, active_skin, target_var)
+
+            if isinstance(val, dict):
+                if val.get("lab") and session not in self.lab_sessions:
+                    self.cdp.send("Runtime.evaluate", {"expression": self.lab_script}, session)
+                    self.lab_sessions.add(session)
+                previews = val.get("previews")
+                if isinstance(previews, list):
+                    for sname in previews[:6]:
+                        if isinstance(sname, str) and sname in self.skin_names:
+                            self.ensure_preview_state(session, sname, "idle")
                 self.last_resync[session] = now_mono
             elif session in self.ready_sessions:
                 self.last_resync[session] = now_mono
 
+        expr = (
+            "window.__atom?{n:__atom.needSkin(),m:__atom.state.uiModel||''}:null"
+            if watch_model
+            else "window.__atom?__atom.needSkin():null"
+        )
         self.cdp.send(
             "Runtime.evaluate",
-            {"expression": "window.__atom?__atom.needSkin():null", "returnByValue": True},
+            {"expression": expr, "returnByValue": True},
             session,
             then=on_probe,
         )
@@ -960,10 +1339,20 @@ class Atom:
             skin = self.session_skin.get(session)
             if not skin:
                 continue
+            variant = self.session_variant.get(session)
             loaded = self.loaded_states.get(session, set())
+            if "thinking" not in loaded and self.get_state_payload(skin, "thinking", variant=variant) is not None:
+                self.ensure_state(session, skin, "thinking", variant=variant)
+                self.last_preload = now_mono
+                return
+            if session not in self.lab_sessions:
+                self.cdp.send("Runtime.evaluate", {"expression": self.lab_script}, session)
+                self.lab_sessions.add(session)
+                self.last_preload = now_mono
+                return
             for st in PRELOAD_ORDER:
-                if st not in loaded and self.get_state_payload(skin, st) is not None:
-                    self.ensure_state(session, skin, st)
+                if st not in loaded and self.get_state_payload(skin, st, variant=variant) is not None:
+                    self.ensure_state(session, skin, st, variant=variant)
                     self.last_preload = now_mono
                     return
 
@@ -983,6 +1372,16 @@ class Atom:
             self.sent_mood = mood
             changed = True
         lim = self.state.limit_info(force=force)
+        hook_model = str(lim.get("activeModel") or "").strip()
+        if hook_model and hook_model != self.last_hook_model:
+            self.last_hook_model = hook_model
+            for session in list(self.ready_sessions):
+                skin = self.session_skin.get(session, "")
+                if self.has_variants(skin):
+                    target_var = self._resolve_variant(skin, hook_model)
+                    if target_var != self.session_variant.get(session):
+                        self._switch_session_variant(session, skin, target_var)
+                        changed = True
         lim_key = (bool(lim["activeLimited"]), lim["activeModel"], tuple(lim["limitedModels"]))
         if lim_key != self.sent_limit:
             self.eval_all(

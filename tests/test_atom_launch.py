@@ -315,13 +315,21 @@ class AtomBridgeTests(unittest.TestCase):
         self.assertTrue(any('__loadState("atom","angry",' in e for e in evals))
         self.assertTrue(any('react("angry",' in e for e in evals))
 
-        # Idle poll trickles one unloaded state from PRELOAD_ORDER at a time
+        # Idle poll trickles one unloaded state from PRELOAD_ORDER at a time, then atom_lab.js
         cdp.sent.clear()
         atom.last_preload = time.monotonic() - (atom_launch.PRELOAD_INTERVAL_SEC + 1.0)
         atom.poll(force=False)
         evals = [p["expression"] for m, p, sess, _ in cdp.sent if m == "Runtime.evaluate" and sess == "s1"]
         self.assertEqual(len(evals), 1)
         self.assertIn('__loadState("atom","thinking",', evals[0])
+
+        cdp.sent.clear()
+        atom.last_preload = time.monotonic() - (atom_launch.PRELOAD_INTERVAL_SEC + 1.0)
+        atom.poll(force=False)
+        evals = [p["expression"] for m, p, sess, _ in cdp.sent if m == "Runtime.evaluate" and sess == "s1"]
+        self.assertEqual(len(evals), 1)
+        self.assertIn("__mountLab(", evals[0])
+        self.assertIn("s1", atom.lab_sessions)
 
         # Sustained turn mood syncs setMood("angry") alongside normal working states until Stop/idle
         cdp.sent.clear()
@@ -409,29 +417,134 @@ class AtomBridgeTests(unittest.TestCase):
         self.assertTrue(any('__atom.setLimit(' in e and '"activeLimited": false' in e for e in evals2))
 
     def test_generated_assets_have_valid_loop_metadata(self) -> None:
-        assets = ROOT / "assets" / "atom"
         self.assertEqual(len(atom_launch.STATES), 19)
-        for state in atom_launch.STATES:
-            meta_path = assets / f"{state}.json"
-            webp_path = assets / f"{state}.webp"
-            self.assertTrue(meta_path.is_file(), f"missing {meta_path}")
-            self.assertTrue(webp_path.is_file(), f"missing {webp_path}")
-            meta = json.loads(meta_path.read_text())
-            self.assertEqual((meta["w"], meta["h"]), (150, 120))
-            n = len(meta["durations"])
-            self.assertGreater(n, 0)
-            self.assertIn("loop", meta)
-            lo, hi = meta["loop"]
-            self.assertGreaterEqual(lo, 0)
-            self.assertLessEqual(lo, hi)
-            self.assertLess(hi, n)
-            if state in ("angry", "sad"):
-                self.assertEqual(n, 42)
-                self.assertEqual([lo, hi], [6, 35])
-            elif state == "dance":
-                self.assertEqual(n, 40)
-                self.assertEqual([lo, hi], [5, 34])
-                self.assertEqual(meta["durations"][0], 65)
+        self.assertEqual(atom_launch.load_skin_names(), ["atom", "base-qt", "chibi", "v2", "v2-wardrobe"])
+        catalog = atom_launch.load_skin_catalog()
+        self.assertEqual([(c["id"], c["name"], c["states"]) for c in catalog], [
+            ("atom", "Atom", 19),
+            ("base-qt", "base qt.", 19),
+            ("v2", "Atom V2", 19),
+            ("chibi", "Cozy Chibi", 19),
+            ("v2-wardrobe", "Nobility Outfits", 19),
+        ])
+        wardrobe_entry = next(c for c in catalog if c["id"] == "v2-wardrobe")
+        self.assertEqual(wardrobe_entry["variants"], ["carbon", "neon", "hydrogen", "orchestrator"])
+        asset_dirs = [ROOT / "assets" / s for s in ("atom", "base-qt", "v2", "chibi", "v2-wardrobe")]
+        asset_dirs.extend(ROOT / "assets" / "v2-wardrobe" / "variants" / v for v in ("neon", "hydrogen", "orchestrator"))
+        for assets in asset_dirs:
+            for state in atom_launch.STATES:
+                meta_path = assets / f"{state}.json"
+                webp_path = assets / f"{state}.webp"
+                self.assertTrue(meta_path.is_file(), f"missing {meta_path}")
+                self.assertTrue(webp_path.is_file(), f"missing {webp_path}")
+                meta = json.loads(meta_path.read_text())
+                self.assertEqual((meta["w"], meta["h"]), (150, 120))
+                n = len(meta["durations"])
+                self.assertGreater(n, 0)
+                self.assertIn("loop", meta)
+                lo, hi = meta["loop"]
+                self.assertGreaterEqual(lo, 0)
+                self.assertLessEqual(lo, hi)
+                self.assertLess(hi, n)
+                if state in ("angry", "sad"):
+                    self.assertEqual(n, 42)
+                    self.assertEqual([lo, hi], [6, 35])
+                elif state == "dance":
+                    self.assertEqual(n, 40)
+                    self.assertEqual([lo, hi], [5, 34])
+                    self.assertEqual(meta["durations"][0], 65)
+
+    def test_lab_catalog_preview_and_skin_switch_sync(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            assets = Path(tmp) / "assets"
+            for skin, extra in (("atom", None), ("cyber", {"name": "Cyber Atom", "tagline": "Neon visor", "accent": "#22d3ee"})):
+                sdir = assets / skin
+                sdir.mkdir(parents=True)
+                for st in ("idle", "listening"):
+                    (sdir / f"{st}.json").write_text(json.dumps({"w": 150, "h": 120, "cols": 1, "durations": [80], "loop": [0, 0]}))
+                    (sdir / f"{st}.webp").write_bytes(b"RIFF\x00\x00\x00\x00WEBPVP8 ")
+                if extra:
+                    (sdir / "skin.json").write_text(json.dumps(extra))
+
+            catalog = atom_launch.load_skin_catalog(assets)
+            self.assertEqual([c["id"] for c in catalog], ["atom", "cyber"])
+            self.assertEqual(catalog[1]["name"], "Cyber Atom")
+            self.assertEqual(catalog[1]["tagline"], "Neon visor")
+            self.assertEqual(catalog[1]["states"], 2)
+
+            lab_js = atom_launch.build_lab_script(assets)
+            self.assertIn('"Cyber Atom"', lab_js)
+
+            cdp = FakeCdp()
+            sr = atom_launch.StateReader(self.home)
+            atom = atom_launch.Atom(cdp, state=sr, assets_dir=assets)
+            atom.sessions["t1"] = "s1"
+            atom.ready_sessions.add("s1")
+            atom.session_skin["s1"] = "atom"
+            atom.loaded_states["s1"] = {"idle", "listening"}
+
+            # Page opened Atom Lab while lab wasn't mounted and "cyber" preview was missing
+            atom.last_resync["s1"] = time.monotonic() - (atom_launch.RESYNC_SEC + 1.0)
+            atom.poll()
+            probe_id = cdp.sent[0][3]
+            cdp.sent.clear()
+            atom.handle({"id": probe_id, "result": {"result": {"value": {"lab": True, "previews": ["cyber"]}}}})
+            evals = [p["expression"] for _, p, _, _ in cdp.sent]
+            self.assertTrue(any("__mountLab(" in e for e in evals))
+            self.assertTrue(any('__loadState("cyber","idle",' in e and ",true)" in e for e in evals))
+
+            # User switches active skin to "cyber": idle preview isn't re-pushed, listening + __markSynced are
+            atom.last_resync["s1"] = time.monotonic() - (atom_launch.RESYNC_SEC + 1.0)
+            cdp.sent.clear()
+            atom.poll()
+            probe2_id = cdp.sent[0][3]
+            cdp.sent.clear()
+            atom.handle({"id": probe2_id, "result": {"result": {"value": "cyber"}}})
+            evals2 = [p["expression"] for _, p, _, _ in cdp.sent]
+            self.assertFalse(any('__loadState("cyber","idle",' in e for e in evals2))
+            self.assertTrue(any('__loadState("cyber","listening",' in e for e in evals2))
+            self.assertTrue(any('__atom.__markSynced("cyber")' in e for e in evals2))
+
+            # Restarting Atom remembers "cyber" in prefs.json and inlines it as DEFAULT_SKIN
+            self.assertEqual(atom_launch.load_prefs(self.home).get("skin"), "cyber")
+            atom2 = atom_launch.Atom(FakeCdp(), state=atom_launch.StateReader(self.home), assets_dir=assets)
+            self.assertEqual(atom2.saved_skin, "cyber")
+            self.assertIn('const DEFAULT_SKIN="cyber";', atom2.script)
+
+            # Switching back to "atom" updates prefs.json and build_bootstrap_script
+            atom2.sessions["t1"] = "s2"
+            atom2.ready_sessions.add("s2")
+            atom2.last_resync["s2"] = time.monotonic() - (atom_launch.RESYNC_SEC + 1.0)
+            atom2.poll()
+            p_back = atom2.cdp.sent[0][3]
+            atom2.handle({"id": p_back, "result": {"result": {"value": "atom"}}})
+            self.assertEqual(atom_launch.load_prefs(self.home).get("skin"), "atom")
+            self.assertEqual(atom2.saved_skin, "atom")
+
+
+    def test_first_run_skin_is_v2(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            assets = Path(tmp) / "assets"
+            for skin in ("atom", "v2"):
+                sdir = assets / skin
+                sdir.mkdir(parents=True)
+                for st in ("idle", "listening"):
+                    (sdir / f"{st}.json").write_text(json.dumps({"w": 150, "h": 120, "cols": 1, "durations": [80], "loop": [0, 0]}))
+                    (sdir / f"{st}.webp").write_bytes(b"RIFF\x00\x00\x00\x00WEBPVP8 ")
+            atom = atom_launch.Atom(FakeCdp(), state=atom_launch.StateReader(self.home), assets_dir=assets)
+            self.assertEqual(atom_launch.FIRST_RUN_SKIN, "v2")
+            self.assertEqual(atom.first_skin, "v2")
+            self.assertIsNone(atom.saved_skin)
+            # The injected script uses the same first-run skin
+            self.assertIn('const FIRST_SKIN = "v2";', (atom_launch.ROOT / "atom_inject.js").read_text(encoding="utf-8"))
+
+            only_atom = Path(tmp) / "only"
+            (only_atom / "atom").mkdir(parents=True)
+            for st in ("idle", "listening"):
+                (only_atom / "atom" / f"{st}.json").write_text(json.dumps({"w": 150, "h": 120, "cols": 1, "durations": [80], "loop": [0, 0]}))
+                (only_atom / "atom" / f"{st}.webp").write_bytes(b"RIFF\x00\x00\x00\x00WEBPVP8 ")
+            atom2 = atom_launch.Atom(FakeCdp(), state=atom_launch.StateReader(self.home), assets_dir=only_atom)
+            self.assertEqual(atom2.first_skin, "atom")
 
 
 class WsCdpTests(unittest.TestCase):
@@ -482,6 +595,86 @@ class WsCdpTests(unittest.TestCase):
 
 
 class PreviewToolsTests(unittest.TestCase):
+    def test_resolve_model_variant_and_live_wardrobe_switching(self) -> None:
+        variants = ["carbon", "neon", "hydrogen", "orchestrator"]
+        self.assertEqual(atom_launch.resolve_model_variant("Carbon (Heavy)", variants, "carbon"), "carbon")
+        self.assertEqual(atom_launch.resolve_model_variant("Neon", variants, "carbon"), "neon")
+        self.assertEqual(atom_launch.resolve_model_variant("Hydrogen 1.5", variants, "carbon"), "hydrogen")
+        self.assertEqual(atom_launch.resolve_model_variant("Orchestrator", variants, "carbon"), "orchestrator")
+        self.assertEqual(atom_launch.resolve_model_variant("gemini-3-flash", variants, "carbon"), "hydrogen")
+        self.assertEqual(atom_launch.resolve_model_variant("claude-sonnet-4", variants, "carbon"), "neon")
+        self.assertEqual(atom_launch.resolve_model_variant("claude-opus", variants, "carbon"), "carbon")
+        self.assertEqual(atom_launch.resolve_model_variant("auto-planner", variants, "carbon"), "orchestrator")
+        self.assertEqual(atom_launch.resolve_model_variant("", variants, "carbon"), "carbon")
+
+        import base64
+        with tempfile.TemporaryDirectory() as tmp:
+            assets = Path(tmp) / "assets"
+            wdir = assets / "v2-wardrobe"
+            raw_bytes = {
+                v: b"RIFF00" + tag.encode() + b"00WEBPVP8 "
+                for v, tag in (("carbon", "CARB"), ("neon", "NEON"), ("hydrogen", "HYDR"), ("orchestrator", "ORCH"))
+            }
+            for v, payload in raw_bytes.items():
+                vdir = wdir if v == "carbon" else (wdir / "variants" / v)
+                vdir.mkdir(parents=True)
+                for st in ("idle", "listening"):
+                    (vdir / f"{st}.json").write_text(json.dumps({"w": 150, "h": 120, "cols": 1, "durations": [80], "loop": [0, 0]}))
+                    (vdir / f"{st}.webp").write_bytes(payload)
+            b64 = {v: base64.b64encode(p).decode() for v, p in raw_bytes.items()}
+            (wdir / "skin.json").write_text(json.dumps({
+                "name": "Atom V2 Wardrobe",
+                "tagline": "Per-model outfits",
+                "accent": "#fbbf24",
+                "defaultVariant": "carbon",
+                "variants": variants,
+            }))
+
+            lab_js = atom_launch.build_lab_script(assets)
+            self.assertIn('"variants":', lab_js)
+
+            cdp = FakeCdp()
+            home = Path(tmp) / "home"
+            (home / "convs").mkdir(parents=True)
+            sr = atom_launch.StateReader(home)
+            atom = atom_launch.Atom(cdp, state=sr, assets_dir=assets)
+            atom.sessions["t1"] = "s1"
+
+            # Initial sync picks up activeSkin="v2-wardrobe" and defaults to "carbon"
+            atom.probe_session("s1")
+            p1 = cdp.sent[0][3]
+            cdp.sent.clear()
+            atom.handle({"id": p1, "result": {"result": {"value": "v2-wardrobe"}}})
+            self.assertEqual(atom.session_variant["s1"], "carbon")
+            evals1 = [p["expression"] for _, p, _, _ in cdp.sent]
+            self.assertTrue(any('__loadState("v2-wardrobe","idle",' in e and b64["carbon"] in e for e in evals1))
+
+            # UI model changes to Neon on resync -> triggers __resetSkin + neon idle sprite
+            atom.last_resync["s1"] = time.monotonic() - (atom_launch.RESYNC_SEC + 1.0)
+            cdp.sent.clear()
+            atom.poll()
+            self.assertIn("uiModel", cdp.sent[0][1]["expression"])
+            p2 = cdp.sent[0][3]
+            cdp.sent.clear()
+            atom.handle({"id": p2, "result": {"result": {"value": {"n": None, "m": "Neon"}}}})
+            self.assertEqual(atom.session_variant["s1"], "neon")
+            evals2 = [p["expression"] for _, p, _, _ in cdp.sent]
+            self.assertTrue(any('__resetSkin("v2-wardrobe")' in e for e in evals2))
+            self.assertTrue(any('__loadState("v2-wardrobe","idle",' in e and b64["neon"] in e for e in evals2))
+
+            # Hook / trigger_state --model changes activeModel to Orchestrator -> switches live!
+            cdp.sent.clear()
+            (home / "limits.json").write_text(json.dumps({
+                "activeModel": "Orchestrator",
+                "activeKey": "orchestrator",
+                "models": {},
+            }))
+            atom.poll(force=True)
+            self.assertEqual(atom.session_variant["s1"], "orchestrator")
+            evals3 = [p["expression"] for _, p, _, _ in cdp.sent]
+            self.assertTrue(any('__resetSkin("v2-wardrobe")' in e for e in evals3))
+            self.assertTrue(any('__loadState("v2-wardrobe","idle",' in e and b64["orchestrator"] in e for e in evals3))
+
     def test_trigger_state_supports_mood_flag_and_gallery_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             orig_home = atom_hook.HOME
@@ -547,6 +740,9 @@ class PreviewToolsTests(unittest.TestCase):
                     trigger_state.set_limit("gemini-3-pro", False)
                     lim2 = json.loads((Path(tmp) / "limits.json").read_text())
                     self.assertNotIn("gemini-3-pro", lim2["models"])
+                    trigger_state.set_model("hydrogen")
+                    lim3 = json.loads((Path(tmp) / "limits.json").read_text())
+                    self.assertEqual(lim3["activeModel"], "hydrogen")
             finally:
                 atom_hook.HOME = orig_home
 

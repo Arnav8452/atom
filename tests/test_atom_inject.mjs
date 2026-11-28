@@ -7,11 +7,14 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const INJECT_SRC = fs.readFileSync(path.join(ROOT, "atom_inject.js"), "utf8");
+const LAB_SRC = fs.readFileSync(path.join(ROOT, "atom_lab.js"), "utf8");
 
 function makeHarness({
   withPromptBox = true,
   preDom = false,
   skinNames = ["atom"],
+  defaultSkin = "",
+  initialStorage = null,
   imageSize = { w: 200, h: 160 },
   onSeedPixels = null,
   capturedBuffers = null,
@@ -25,6 +28,7 @@ function makeHarness({
   const mutationObservers = [];
   const resizeObservers = [];
   const drawCalls = [];
+  const fillCalls = [];
   const createdBitmaps = [];
   const offscreenCount = { count: 0 };
   let occludedModal = null;
@@ -36,13 +40,22 @@ function makeHarness({
       this.tagName = tag.toUpperCase();
       this.id = "";
       this.className = "";
-      this.style = { display: "", transform: "" };
+      this.style = { display: "", transform: "", setProperty: () => {} };
       this.children = [];
       this.parentElement = null;
       this.shadow = null;
       this.width = 0;
       this.height = 0;
       this.title = "";
+      this.disabled = false;
+      this.value = "";
+      this.dataset = {};
+      this._classes = new Set();
+      this.classList = {
+        add: (c) => this._classes.add(c),
+        remove: (c) => this._classes.delete(c),
+        contains: (c) => this._classes.has(c),
+      };
       this.listeners = new Map();
       this.isConnected = false;
       this._attrs = new Map();
@@ -85,9 +98,16 @@ function makeHarness({
     attachShadow() {
       const root = new MockElement("shadow-root");
       root.innerHTML = "";
+      root._q = {};
       root.querySelector = (sel) => {
         if (sel === "canvas") return root._canvas || (root._canvas = new MockElement("canvas"));
         if (sel === "#hit") return root._hit || (root._hit = new MockElement("div"));
+        if (root._q[sel]) return root._q[sel];
+        if ([".menu", ".backdrop", ".closeBtn", ".doneBtn", ".search", ".grid"].includes(sel)) {
+          const el = new MockElement(sel.includes("Btn") ? "button" : sel === ".search" ? "input" : "div");
+          root._q[sel] = el;
+          return el;
+        }
         return null;
       };
       this.shadow = root;
@@ -102,7 +122,16 @@ function makeHarness({
         imageSmoothingEnabled: false,
         imageSmoothingQuality: "low",
         globalAlpha: 1,
+        fillStyle: "#000000",
+        save() {},
+        restore() {},
+        beginPath() {},
+        rect() {},
+        clip() {},
+        translate() {},
+        rotate() {},
         clearRect() {},
+        fillRect(x, y, w, h) { fillCalls.push({ x, y, w, h, fillStyle: ctxObj.fillStyle, alpha: ctxObj.globalAlpha }); },
         drawImage(_bmp, sx, sy) { drawCalls.push({ sx, sy, alpha: ctxObj.globalAlpha }); },
       };
       return ctxObj;
@@ -142,7 +171,7 @@ function makeHarness({
   }
   if (withPromptBox) createPromptBox();
 
-  const storage = new Map();
+  const storage = new Map(Object.entries(initialStorage || {}));
   const document = {
     documentElement: preDom ? null : docEl,
     body,
@@ -273,10 +302,9 @@ function makeHarness({
   windowObj.window = windowObj;
   windowObj.globalThis = windowObj;
 
-  const source = INJECT_SRC.replace(
-    "const SKIN_NAMES = __ATOM_SKIN_NAMES__;",
-    `const SKIN_NAMES = ${JSON.stringify(skinNames)};`,
-  );
+  const source = INJECT_SRC
+    .replace("const SKIN_NAMES = __ATOM_SKIN_NAMES__;", `const SKIN_NAMES = ${JSON.stringify(skinNames)};`)
+    .replace('"__ATOM_DEFAULT_SKIN__"', JSON.stringify(defaultSkin));
   vm.runInNewContext(source, windowObj);
 
   async function flushMicrotasks() {
@@ -323,6 +351,7 @@ function makeHarness({
     mutationObservers,
     resizeObservers,
     drawCalls,
+    fillCalls,
     createdBitmaps,
     offscreenCount,
     createPromptBox,
@@ -356,6 +385,25 @@ function makeHarness({
       for (const fn of fns) fn({ stopPropagation() {}, shiftKey: Boolean(opts.shiftKey), altKey: Boolean(opts.altKey) });
       return hit;
     },
+    triggerHitContextMenu: (opts = {}) => {
+      const host = docEl.children.find((c) => c.id === "atom-mascot");
+      const hit = host?.shadow?.querySelector("#hit");
+      const fns = hit?.listeners.get("contextmenu") || [];
+      for (const fn of fns) fn({ preventDefault() {}, stopPropagation() {}, clientX: opts.clientX ?? 200, clientY: opts.clientY ?? 300 });
+      return hit;
+    },
+    triggerDocEvent: (type, evt = {}) => {
+      for (const fn of [...(listeners.get(type) || [])]) fn(evt);
+    },
+    mountLab: (catalog = skinNames.map((id) => ({ id, name: id, tagline: "", accent: "#38bdf8", states: 19 }))) => {
+      const labCode = LAB_SRC.replace(
+        "const CATALOG = __ATOM_SKIN_CATALOG__;",
+        `const CATALOG = ${JSON.stringify(catalog)};`,
+      );
+      vm.runInNewContext(labCode, windowObj);
+      return docEl.children.find((c) => c.id === "atom-lab") || null;
+    },
+    storage,
     advance,
     flushMicrotasks,
   };
@@ -734,6 +782,24 @@ test("click plays dance one-shot even with one skin; Shift+click switches with m
   assert.equal(h2.window.__atom.state.skin, "alt");
 });
 
+test("fresh install defaults to Atom V2; a saved or injected choice still wins", () => {
+  const fresh = makeHarness({ skinNames: ["atom", "base-qt", "v2"] });
+  assert.equal(fresh.window.__atom.state.skin, "v2");
+  fresh.window.__atom.destroy();
+
+  const saved = makeHarness({ skinNames: ["atom", "v2"], initialStorage: { "atom.skin": "atom" } });
+  assert.equal(saved.window.__atom.state.skin, "atom");
+  saved.window.__atom.destroy();
+
+  const injected = makeHarness({ skinNames: ["atom", "v2"], defaultSkin: "atom" });
+  assert.equal(injected.window.__atom.state.skin, "atom");
+  injected.window.__atom.destroy();
+
+  const noV2 = makeHarness({ skinNames: ["atom", "chibi"] });
+  assert.equal(noV2.window.__atom.state.skin, "atom");
+  noV2.window.__atom.destroy();
+});
+
 test("Alt+click switches mascot side (left/right) and persists in storage", async () => {
   const h = makeHarness({ skinNames: ["atom"] });
   await h.window.__atom.__loadSkin("atom", fakeSkinPayload());
@@ -787,6 +853,52 @@ test("automatically hoists above compact stacked cards (e.g. Queued Messages) bu
   const hoistedY = parseInt(host.style.transform.match(/,\s*(\d+)px\)/)[1], 10);
   assert.ok(hoistedY < normalY, `Expected hoisted Y (${hoistedY}) to be above normal Y (${normalY})`);
   assert.equal(normalY - hoistedY, 60);
+});
+
+test("hoists over nested/multi-stacked/inset cards on mutation and after switching skins", async () => {
+  const b64 = Buffer.from("webp").toString("base64");
+  const skin150 = () => ({
+    idle: { webp: b64, w: 150, h: 120, cols: 10, durations: Array(10).fill(100), loop: [0, 9] },
+    listening: { webp: b64, w: 150, h: 120, cols: 10, durations: Array(10).fill(100), loop: [0, 9] },
+  });
+  const h = makeHarness({ skinNames: ["atom", "chibi", "v2"], imageSize: { w: 150, h: 120 } });
+  await h.window.__atom.__loadSkin("atom", skin150());
+  await h.window.__atom.__loadSkin("chibi", skin150());
+  await h.window.__atom.__loadSkin("v2", skin150());
+  await h.advance(20);
+
+  const host = h.docEl.children.find((c) => c.id === "atom-mascot");
+  const normalY = parseInt(host.style.transform.match(/,\s*(\d+)px\)/)[1], 10);
+
+  // Stacked cards placed on ancestor h.panel (above wrapper h.pane) with a 0px spacer & inset width
+  const spacer = h.createEl("div");
+  spacer.getBoundingClientRect = () => ({ top: 600, bottom: 600, left: 100, right: 1000, width: 900, height: 0 });
+  const queueCard = h.createEl("div");
+  queueCard.getBoundingClientRect = () => ({ top: 550, bottom: 600, left: 120, right: 980, width: 860, height: 50 });
+  const stepsCard = h.createEl("div");
+  stepsCard.getBoundingClientRect = () => ({ top: 510, bottom: 550, left: 120, right: 980, width: 860, height: 40 });
+  const chatTranscript = h.createEl("div");
+  chatTranscript.className = "conversation-messages";
+  chatTranscript.getBoundingClientRect = () => ({ top: 410, bottom: 510, left: 100, right: 1000, width: 900, height: 100 });
+
+  h.panel.children.unshift(chatTranscript, stepsCard, queueCard, spacer);
+  for (const c of [chatTranscript, stepsCard, queueCard, spacer]) c.parentElement = h.panel;
+
+  // Fire footer MutationObserver (last observer created by observeBar) -> schedules & runs place()
+  h.mutationObservers.forEach((m) => m.trigger());
+  await h.advance(200);
+
+  const multiHoistedY = parseInt(host.style.transform.match(/,\s*(\d+)px\)/)[1], 10);
+  assert.equal(normalY - multiHoistedY, 90, "should hoist over both 50px + 40px stacked cards, skip 0px spacer, ignore chatTranscript");
+
+  // Switch skins (atom -> chibi -> v2) while stacked cards stay mounted -> hoisted Y stays intact
+  for (const nextSkin of ["chibi", "v2"]) {
+    h.window.__atom.setSkin(nextSkin);
+    await h.advance(1400);
+    const y = parseInt(host.style.transform.match(/,\s*(\d+)px\)/)[1], 10);
+    assert.equal(y, multiHoistedY, `expected ${nextSkin} to stay hoisted at ${multiHoistedY}`);
+  }
+  h.window.__atom.destroy();
 });
 
 test("sustained angry base holds in 30f loop and exits cleanly via 6f outro on idle", async () => {
@@ -1203,4 +1315,375 @@ test("DOM quota alert sleeps Atom while chat transcript text does not false-trig
   await h.advance(300);
   assert.equal(h.window.__atom.state.limitSleep, true);
   assert.equal(h.window.__atom.state.playing, "closed");
+});
+
+test("right-click opens lazy context menu, toggles side, and opens Atom Lab to switch animated skins", async () => {
+  const h = makeHarness({ skinNames: ["atom", "cyber"] });
+  await h.window.__atom.__loadSkin("atom", fakeSkinPayload());
+  await h.advance(30);
+  assert.equal(h.window.__atom.needSkin(), null);
+
+  // Right-click before atom_lab.js is loaded queues the menu request and asks needSkin for lab
+  h.triggerHitContextMenu({ clientX: 900, clientY: 500 });
+  assert.equal(h.window.__atom.state.menuOpen, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.window.__atom.needSkin())), { lab: true, previews: [] });
+
+  // Mounting atom_lab.js immediately displays the context menu
+  const labHost = h.mountLab([
+    { id: "atom", name: "Atom", tagline: "Original", accent: "#38bdf8", states: 19 },
+    { id: "cyber", name: "Cyber", tagline: "Neon", accent: "#22d3ee", states: 19 },
+  ]);
+  assert.ok(labHost);
+  assert.equal(labHost.style.display, "block");
+  const menuEl = labHost.shadow.querySelector(".menu");
+  assert.equal(menuEl.style.display, "flex");
+  assert.equal(menuEl.children.length, 3);
+
+  // Clicking "Move to Left" updates alignment and closes the menu
+  const alignBtn = menuEl.children[2];
+  for (const fn of alignBtn.listeners.get("click") || []) fn({ stopPropagation() {} });
+  assert.equal(h.window.__atom.state.align, "left");
+  assert.equal(h.window.__atom.state.menuOpen, false);
+  assert.equal(labHost.style.display, "none");
+
+  // Re-opening menu then clicking outside closes it; Escape closes too
+  h.triggerHitContextMenu({ clientX: 120, clientY: 500 });
+  assert.equal(h.window.__atom.state.menuOpen, true);
+  h.triggerDocEvent("pointerdown", { target: h.pane });
+  assert.equal(h.window.__atom.state.menuOpen, false);
+
+  h.triggerHitContextMenu({ clientX: 120, clientY: 500 });
+  const labBtn = menuEl.children[0];
+  for (const fn of labBtn.listeners.get("click") || []) fn({ stopPropagation() {} });
+  assert.equal(h.window.__atom.state.menuOpen, false);
+  assert.equal(h.window.__atom.state.labOpen, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.window.__atom.needSkin())), { lab: false, previews: ["cyber"] });
+
+  // Preview load makes the second card ready & animated via Lab's shared rAF loop
+  await h.window.__atom.__loadState("cyber", "idle", fakeSkinPayload().idle, true);
+  assert.equal(h.window.__atom.needSkin(), null);
+  const grid = labHost.shadow.querySelector(".grid");
+  const cyberCard = grid.children[1];
+  assert.equal(cyberCard.classList.contains("ready"), true);
+  const drawsBefore = h.drawCalls.length;
+  await h.advance(140);
+  assert.ok(h.drawCalls.length > drawsBefore, "Lab rAF should animate card canvases");
+
+  // Closing Lab via Escape hides #atom-lab and cancels Lab's rAF immediately
+  const rafsWhileOpen = h.rafs.size;
+  h.triggerDocEvent("keydown", { key: "Escape" });
+  assert.equal(h.window.__atom.state.labOpen, false);
+  assert.equal(labHost.style.display, "none");
+  assert.equal(h.rafs.size, rafsWhileOpen - 1);
+
+  // Re-opening Lab and clicking Cyber card equips it, closes Lab, requests sync, and starts red curtain
+  h.window.__atom.openLab();
+  assert.equal(h.window.__atom.state.labOpen, true);
+  for (const fn of cyberCard.listeners.get("click") || []) fn({});
+  assert.equal(h.window.__atom.state.skin, "cyber");
+  assert.equal(h.storage.get("atom.skin"), "cyber");
+  assert.equal(cyberCard.classList.contains("equipped"), true);
+  assert.equal(h.window.__atom.state.labOpen, false);
+  assert.equal(labHost.style.display, "none");
+  assert.equal(h.window.__atom.needSkin(), "cyber");
+  assert.equal(h.window.__atom.state.skinTransition, "closing");
+
+  h.window.__atom.destroy();
+  assert.equal(labHost.removed, true);
+  assert.equal(h.rafs.size, 0);
+});
+
+test("skin switch plays red curtain transition (loaded, deferred-load, and fallback)", async () => {
+  // 1. Loaded path with Atom Lab rich right-to-left pulling curtain mounted
+  const h = makeHarness({ skinNames: ["atom", "alt", "cyber"] });
+  await h.window.__atom.__loadSkin("atom", fakeSkinPayload());
+  await h.window.__atom.__loadSkin("alt", fakeSkinPayload());
+  await h.advance(30);
+  h.mountLab([
+    { id: "atom", name: "Atom", tagline: "", accent: "#38bdf8", states: 19 },
+    { id: "alt", name: "Alt", tagline: "", accent: "#38bdf8", states: 19 },
+    { id: "cyber", name: "Cyber", tagline: "", accent: "#22d3ee", states: 19 },
+  ]);
+
+  const width = h.window.__atom.state.widthCss;
+  h.fillCalls.length = 0;
+  assert.equal(h.window.__atom.setSkin("alt"), true);
+  assert.equal(h.window.__atom.state.skin, "alt");
+  assert.equal(h.window.__atom.state.skinTransition, "closing");
+
+  // Early closing (~220ms) -> anchored on RIGHT half, pulling leftward
+  await h.advance(220);
+  assert.equal(h.window.__atom.state.skinTransition, "closing");
+  const earlyXs = h.fillCalls.filter((c) => c.fillStyle === "#d41c2c").map((c) => c.x);
+  assert.ok(earlyXs.length > 0, "expected crimson curtain folds during closing");
+  assert.ok(Math.min(...earlyXs) > width * 0.5, "expected curtain to start on the right side");
+
+  // Late closing (~460ms total) -> pulled across to LEFT half
+  h.fillCalls.length = 0;
+  await h.advance(240);
+  assert.equal(h.window.__atom.state.skinTransition, "closing");
+  const lateXs = h.fillCalls.filter((c) => c.fillStyle === "#d41c2c").map((c) => c.x);
+  assert.ok(Math.min(...lateXs) < width * 0.35, "expected Atom to pull curtain right-to-left across stage");
+
+  // Around 620ms total -> holding closed while changing skins + gold sparkles
+  await h.advance(160);
+  assert.equal(h.window.__atom.state.skinTransition, "holding");
+
+  // Around 880ms total -> pulling open left-to-right to unveil new skin
+  await h.advance(260);
+  assert.equal(h.window.__atom.state.skinTransition, "opening");
+
+  h.fillCalls.length = 0;
+  await h.advance(220);
+  assert.equal(h.window.__atom.state.skinTransition, "opening");
+  const openXs = h.fillCalls.filter((c) => c.fillStyle === "#d41c2c").map((c) => c.x);
+  assert.ok(Math.max(...openXs) > width * 0.5, "expected curtain to pull open back toward the right");
+
+  // Around 1340ms total -> fading out brass rod & reveal sparkles
+  await h.advance(240);
+  assert.equal(h.window.__atom.state.skinTransition, "fading");
+
+  // By ~1550ms -> transition completed cleanly with no stray 60fps loop
+  await h.advance(220);
+  assert.equal(h.window.__atom.state.skinTransition, null);
+
+  // 2. Deferred-load path: switching to unloaded "cyber" holds curtain closed until idle sheet arrives
+  assert.equal(h.window.__atom.setSkin("cyber"), true);
+  await h.advance(700);
+  assert.equal(h.window.__atom.state.skinTransition, "holding");
+  await h.window.__atom.__loadState("cyber", "idle", fakeSkinPayload().idle, false);
+  await h.advance(160);
+  assert.equal(h.window.__atom.state.skinTransition, "opening");
+  await h.advance(700);
+  assert.equal(h.window.__atom.state.skinTransition, null);
+
+  // 3. Compact fallback path (before atom_lab.js mounts) also renders red curtain & completes
+  const h2 = makeHarness({ skinNames: ["atom", "alt"] });
+  await h2.window.__atom.__loadSkin("atom", fakeSkinPayload());
+  await h2.window.__atom.__loadSkin("alt", fakeSkinPayload());
+  await h2.advance(30);
+  h2.fillCalls.length = 0;
+  assert.equal(h2.window.__atom.setSkin("alt"), true);
+  assert.equal(h2.window.__atom.state.skinTransition, "closing");
+  await h2.advance(240);
+  assert.ok(h2.fillCalls.some((c) => c.fillStyle === "#d41c2c"), "expected compact red curtain fallback");
+  await h2.advance(1400);
+  assert.equal(h2.window.__atom.state.skinTransition, null);
+
+  // Injected DEFAULT_SKIN wins over empty/stale localStorage on fresh localhost origin
+  const h3 = makeHarness({ skinNames: ["atom", "base-qt"], defaultSkin: "base-qt" });
+  assert.equal(h3.window.__atom.state.skin, "base-qt");
+  assert.equal(h3.window.__atom.needSkin(), "base-qt");
+
+  h.window.__atom.destroy();
+  h2.window.__atom.destroy();
+  h3.window.__atom.destroy();
+});
+
+test("switching skin during idle typing fidget does not get stuck in typing", async () => {
+  const b64 = Buffer.from("webp").toString("base64");
+  const makeThreePhaseSkin = () => ({
+    idle: { webp: b64, w: 150, h: 120, cols: 10, durations: Array(10).fill(100), loop: [0, 9] },
+    typing: { webp: b64, w: 150, h: 120, cols: 10, durations: Array(50).fill(100), loop: [7, 36] },
+  });
+  const h = makeHarness({ skinNames: ["atom", "base-qt", "cyber"] });
+  await h.window.__atom.__loadSkin("atom", makeThreePhaseSkin());
+  await h.window.__atom.__loadSkin("base-qt", makeThreePhaseSkin());
+  await h.advance(30);
+  assert.equal(h.window.__atom.state.playing, "idle");
+
+  // Trigger idle fidget into 3-phase typing loop, then switch to preloaded base-qt
+  await h.advance(7200);
+  assert.equal(h.window.__atom.state.playing, "typing");
+  h.window.__atom.setSkin("base-qt");
+  assert.equal(h.window.__atom.state.skin, "base-qt");
+  assert.equal(h.window.__atom.state.playing, "idle");
+  await h.advance(2000);
+  assert.equal(h.window.__atom.state.playing, "idle");
+
+  // Trigger idle fidget again on base-qt, then switch to unloaded cyber
+  await h.advance(7200);
+  assert.equal(h.window.__atom.state.playing, "typing");
+  h.window.__atom.setSkin("cyber");
+  await h.advance(600);
+  await h.window.__atom.__loadState("cyber", "idle", makeThreePhaseSkin().idle, false);
+  await h.advance(1200);
+  assert.equal(h.window.__atom.state.skin, "cyber");
+  assert.equal(h.window.__atom.state.playing, "idle");
+  h.window.__atom.destroy();
+});
+
+test("idle sheet with stand-then-sit intro enters loop and interrupts immediately on base/listening", async () => {
+  const b64 = Buffer.from("webp").toString("base64");
+  const h = makeHarness({ skinNames: ["atom", "chibi"], defaultSkin: "chibi" });
+  await h.window.__atom.__loadSkin("chibi", {
+    idle: { webp: b64, w: 150, h: 120, cols: 10, durations: Array(65).fill(100), loop: [35, 64] },
+    listening: { webp: b64, w: 150, h: 120, cols: 10, durations: Array(30).fill(100), loop: [0, 29] },
+    thinking: { webp: b64, w: 150, h: 120, cols: 10, durations: Array(44).fill(100), loop: [7, 36] },
+  });
+  await h.advance(30);
+  assert.equal(h.window.__atom.state.playing, "idle");
+  assert.equal(h.window.__atom.state.phase, "intro");
+
+  // Advances smoothly past frame 35 into sitting loop without getting stuck
+  await h.advance(3600);
+  assert.equal(h.window.__atom.state.playing, "idle");
+  assert.equal(h.window.__atom.state.phase, "loop");
+
+  // Re-entering idle from thinking starts at standing intro, and listening interrupts intro promptly
+  h.window.__atom.setBase("thinking");
+  await h.advance(150);
+  assert.equal(h.window.__atom.state.playing, "thinking");
+  await h.advance(1250);
+  h.window.__atom.setBase("idle");
+  await h.advance(800);
+  assert.equal(h.window.__atom.state.playing, "idle");
+  assert.equal(h.window.__atom.state.phase, "intro");
+
+  h.triggerInput();
+  await h.advance(250);
+  assert.equal(h.window.__atom.state.playing, "listening");
+  h.window.__atom.destroy();
+});
+
+test("tiltMoodEyes handles 3/4 tilted work eyes (dx>=12, dy<=5) and skips reaction/closed sheets", async () => {
+  const W = 150, H = 120;
+  const capturedBuffers = [];
+  const paintRect = (d, x0, x1, y0, y1, r, g, b) => {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const o = (y * W + x) * 4;
+        d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
+      }
+    }
+  };
+  const h = makeHarness({
+    imageSize: { w: W, h: H },
+    capturedBuffers,
+    onSeedPixels: (d) => {
+      paintRect(d, 45, 108, 50, 95, 20, 145, 240);
+      // 3/4 tilted eye pair: dx = 78.5 - 65.5 = 13px, dy = |62 - 66| = 4px
+      paintRect(d, 63, 68, 63, 69, 10, 14, 20);
+      paintRect(d, 76, 81, 59, 65, 10, 14, 20);
+    },
+  });
+  const sheetSpec = {
+    webp: Buffer.from("webp").toString("base64"),
+    w: W,
+    h: H,
+    cols: 1,
+    durations: [100],
+    loop: [0, 0],
+  };
+  await h.window.__atom.__loadSkin("atom", {
+    idle: { ...sheetSpec },
+    thinking: { ...sheetSpec },
+    done: { ...sheetSpec },
+    closed: { ...sheetSpec },
+  });
+  await h.advance(20);
+
+  const px = (d, x, y) => {
+    const o = (y * W + x) * 4;
+    return [d[o], d[o + 1], d[o + 2]];
+  };
+
+  // Work state tilts 3/4 eyes
+  h.window.__atom.setBase("thinking");
+  h.window.__atom.setMood("angry");
+  await h.advance(80);
+  const workBuf = capturedBuffers[capturedBuffers.length - 1];
+  assert.ok(px(workBuf, 68, 63)[0] > 180, "expected inner-top of left 3/4 eye to tilt angry red");
+  assert.ok(px(workBuf, 76, 59)[0] > 180, "expected inner-top of right 3/4 eye to tilt angry red");
+
+  // Closed & done reaction sheets keep custom eye pixels intact without tiltMoodEyes slicing
+  h.window.__atom.setBase("closed");
+  await h.advance(80);
+  const closedBuf = capturedBuffers[capturedBuffers.length - 1];
+  assert.ok(px(closedBuf, 68, 63)[0] < 35 && px(closedBuf, 76, 59)[0] < 35, "closed eyes must not be cut by tiltMoodEyes");
+
+  h.window.__atom.setBase("idle");
+  h.window.__atom.react("done", "d1");
+  await h.advance(120);
+  const doneBuf = capturedBuffers[capturedBuffers.length - 1];
+  assert.ok(px(doneBuf, 68, 63)[0] < 35 && px(doneBuf, 76, 59)[0] < 35, "reaction (done) eyes must not be cut by tiltMoodEyes");
+  h.window.__atom.destroy();
+});
+
+test("detects Carbon/Neon/Hydrogen/Orchestrator uiModel and swaps wardrobe via __resetSkin", async () => {
+  const h = makeHarness();
+  await h.window.__atom.__loadSkin("atom", fakeSkinPayload());
+  await h.advance(20);
+
+  // Attach a model-picker BUTTON matching MF_RE without needing "model" in data-testid
+  const picker = h.createEl("BUTTON");
+  picker.textContent = "Orchestrator";
+  h.boxes[0]._bar.appendChild(picker);
+  h.window.__atom.checkLimit();
+  assert.equal(h.window.__atom.state.uiModel, "Orchestrator");
+
+  for (const label of ["Carbon", "Neon", "Hydrogen"]) {
+    picker.textContent = label;
+    h.window.__atom.checkLimit();
+    assert.equal(h.window.__atom.state.uiModel, label);
+  }
+
+  // Switching outfits on the active skin via __resetSkin closes curtain & requests fresh sprites
+  h.window.__atom.__resetSkin("atom");
+  assert.equal(h.window.__atom.state.skinTransition, "closing");
+  assert.equal(h.window.__atom.needSkin(), "atom");
+
+  await h.window.__atom.__loadState("atom", "idle", fakeSkinPayload().idle);
+  assert.equal(h.window.__atom.needSkin(), null);
+  h.window.__atom.destroy();
+});
+
+test("vector drawCurtain renders curved billowing velvet pleats, brass rings, and 4-point stars", async () => {
+  const h = makeHarness({ skinNames: ["atom", "alt"] });
+  let capturedApi = null;
+  const origMount = h.window.__atom.__mountLab.bind(h.window.__atom);
+  h.window.__atom.__mountLab = (factory) => {
+    origMount((bridge) => {
+      capturedApi = factory(bridge);
+      return capturedApi;
+    });
+  };
+  h.mountLab([
+    { id: "atom", name: "Atom", tagline: "", accent: "#38bdf8", states: 19 },
+    { id: "alt", name: "Alt", tagline: "", accent: "#38bdf8", states: 19 },
+  ]);
+  assert.ok(capturedApi && typeof capturedApi.drawCurtain === "function");
+
+  const runCapture = (st) => {
+    const quads = [], arcs = [], grads = [];
+    const ctx = {
+      globalAlpha: 1, fillStyle: "", strokeStyle: "", lineWidth: 1, lineCap: "butt",
+      fillRect() {}, save() {}, restore() {}, translate() {}, rotate() {},
+      beginPath() {}, closePath() {}, moveTo() {}, lineTo() {},
+      bezierCurveTo() {},
+      quadraticCurveTo(cx, cy, x, y) { quads.push({ cx, cy, x, y }); },
+      arc(x, y, r) { arcs.push({ x, y, r }); },
+      fill() {}, stroke() {},
+      createLinearGradient(x0, y0, x1, y1) {
+        const stops = [];
+        const g = { x0, y0, x1, y1, stops, addColorStop(t, c) { stops.push([t, c]); } };
+        grads.push(g);
+        return g;
+      },
+    };
+    capturedApi.drawCurtain(ctx, 300, 240, st);
+    return { quads, arcs, grads };
+  };
+
+  // Mid-pull closing: renders cylindrical velvet gradients, curved pleats/scallops, brass rings & rounded paw
+  const closing = runCapture({ edge: 72, rodA: 1, hand: true, rustle: 0, spark: 0, el: 325, adx: -10, ady: -2, open: false });
+  assert.ok(closing.grads.length >= 8, "expected cylindrical pleat + valance + rod gradients");
+  assert.ok(closing.quads.length >= 30, "expected smooth quadratic curves for pleats, scallops, swags, and arm");
+  assert.ok(closing.arcs.length >= 10, "expected circular arcs for brass rings, finials, tassel, and rounded paw");
+
+  // Holding closed: renders 4-point star sparkles (each star = 4 concave quadratic curves)
+  const holding = runCapture({ edge: 20, rodA: 1, hand: false, rustle: 1.2, spark: 1, el: 610, adx: 0, ady: 0, open: false });
+  assert.ok(holding.quads.length > closing.quads.length - 4, "expected curved pleats + 4-point star sparkles while holding");
+
+  h.window.__atom.destroy();
 });

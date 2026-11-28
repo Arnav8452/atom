@@ -4,17 +4,19 @@
   if (window.__atom) return;
 
   const SKIN_NAMES = __ATOM_SKIN_NAMES__;
+  const DEFAULT_SKIN = "__ATOM_DEFAULT_SKIN__";
   const SIZE = { min: 72, max: 132, ofBar: 0.09 };
   const INSET = 20;
   const SINK = 0.015;
   const MIN_DWELL_MS = 1200;
   const INSTANT_EXIT = new Set(["idle", "listening", "closed"]);
   const BLEND_MS = 140;
+  const CUR = [540, 220, 520, 160];
   const MOOD_RAMP_MS = 650;
   const FIDGET_AFTER_MS = 7000;
   const LISTEN_MS = 2000;
   const REACTIONS = new Set(["happy", "sad", "angry", "error", "canceled", "tired", "done", "dance"]);
-  const MF_RE = /\b(gemini|claude|gpt|opus|sonnet|haiku|flash)\b/i;
+  const MF_RE = /\b(gemini|claude|gpt|opus|sonnet|haiku|flash|carbon|neon|hydrogen|orchestrator)\b/i;
   const DQ_RE = /(?:reached.*quota|quota\s*(?:limit|exhaust|exceed)|(?:rate|usage|5[-\s]?h(?:ou)?r|weekly)\s*limit|resume using this model|0% remaining)/i;
   const CHAT_RE = /message|conversation|chat|transcript|history|turn|log/i;
   const MOOD_LOOK = {
@@ -43,25 +45,24 @@
 
   const skinNames = [...SKIN_NAMES].sort((a, b) => (a === "atom" ? -1 : b === "atom" ? 1 : a.localeCompare(b)));
   const savedSkin = readStorage("atom.skin");
-  let skin = skinNames.includes(savedSkin) ? savedSkin : skinNames[0];
+  // Saved choice first; on a fresh install Atom V2 (FIRST_SKIN) is the default.
+  const FIRST_SKIN = "v2";
+  let skin = skinNames.includes(DEFAULT_SKIN) ? DEFAULT_SKIN : (skinNames.includes(savedSkin) ? savedSkin : (skinNames.includes(FIRST_SKIN) ? FIRST_SKIN : skinNames[0]));
   const savedAlign = readStorage("atom.align");
   let align = savedAlign === "left" ? "left" : "right";
 
   const sheets = {};
   const recolouring = new Set();
   let loadingSkin = null;
-  const closeBmp = (b) => { if (b && typeof b.close === "function") b.close(); };
-
-  function yieldToMain() {
-    if (typeof MessageChannel === "function") {
-      return new Promise((resolve) => {
-        const ch = new MessageChannel();
-        ch.port1.onmessage = () => resolve();
-        ch.port2.postMessage(null);
-      });
-    }
-    return new Promise((resolve) => setTimeout(resolve, 0));
-  }
+  let syncedSkin = null;
+  let labApi = null;
+  let labReq = null;
+  let menuPt = null;
+  const closeBmp = (b) => b?.close?.();
+  const yieldToMain = () => new Promise((r) => {
+    if (typeof MessageChannel === "function") { const c = new MessageChannel(); c.port1.onmessage = r; c.port2.postMessage(null); }
+    else setTimeout(r, 0);
+  });
 
   async function decode(b64) {
     const bytes = typeof Uint8Array.fromBase64 === "function"
@@ -113,7 +114,7 @@
           for (let j = i + 1; j < eyes.length; j++) {
             const dx = (eyes[j].x0 + eyes[j].x1 - eyes[i].x0 - eyes[i].x1) * 0.5;
             const dy = Math.abs((eyes[j].y0 + eyes[j].y1 - eyes[i].y0 - eyes[i].y1) * 0.5);
-            if (dx >= 22 && dx <= 32 && dy <= 3) { pair = [eyes[i], eyes[j]]; break; }
+            if (dx >= 12 && dx <= 32 && dy <= 5) { pair = [eyes[i], eyes[j]]; break; }
           }
         }
         if (!pair) continue;
@@ -234,7 +235,8 @@
     const look = MOOD_LOOK[moodName];
     if (!entry || !entry.bitmap || !look) return;
     if (entry._moodSrc === entry.bitmap && entry._mood && entry._mood[moodName]) return;
-    return cachedRecolour(`mood:${skinName}:${state}:${moodName}`, entry.bitmap, look, entry.w, entry.h, (bitmap) => {
+    const effLook = (REACTIONS.has(state) || state === "closed") ? { ...look, eyes: null } : look;
+    return cachedRecolour(`mood:${skinName}:${state}:${moodName}`, entry.bitmap, effLook, entry.w, entry.h, (bitmap) => {
       if (entry._moodSrc !== entry.bitmap) {
         if (entry._mood) Object.values(entry._mood).forEach(closeBmp);
         entry._mood = {};
@@ -255,7 +257,8 @@
     return { ...meta, bitmap, look: { speed: 1 } };
   }
 
-  async function loadState(name, state, s) {
+  const unlockCurtain = () => { if (curtain && !curtain.openAt) { curtain.openAt = Math.max(performance.now(), curtain.startedAt + CUR[0] + CUR[1]); blend = null; } };
+  async function loadState(name, state, s, isPreview = false) {
     if (destroyed || !s || typeof s !== "object") return;
     const prevLoad = loadingSkin;
     if (state === "idle") loadingSkin = name;
@@ -264,13 +267,17 @@
       if (!entry || destroyed) return;
       const own = sheets[name] || (sheets[name] = {});
       own[state] = entry;
-      if (name === skin && activated && (!playing || (playing === state && sheet !== entry))) {
+      if (!isPreview && name === skin && state === "idle") syncedSkin = name;
+      if (name === skin) unlockCurtain();
+      if (name === skin && activated && (!playing || !sheet || sheetSkin !== skin || (playing === state && sheet !== entry))) {
         start(playing || effectiveBase(), { isOneShot: oneShot });
+        if (curtain) blend = null;
         place();
         paintVisible();
       } else if (name === skin && moodColor && playing === state) {
         ensureMoodBitmap(name, state, entry, moodColor);
       }
+      if (labApi) labApi.refresh();
     } finally {
       if (state === "idle" && loadingSkin === name) loadingSkin = prevLoad === name ? null : prevLoad;
     }
@@ -290,11 +297,14 @@
         decoded[state] = entry;
       }
       sheets[name] = decoded;
+      if (name === skin) { syncedSkin = name; unlockCurtain(); }
       if (name === skin && activated) {
-        start(playing || effectiveBase());
+        start(playing || effectiveBase(), { isOneShot: oneShot });
+        if (curtain) blend = null;
         place();
         paintVisible();
       }
+      if (labApi) labApi.refresh();
     } finally {
       if (loadingSkin === name) loadingSkin = null;
     }
@@ -305,13 +315,7 @@
   host.id = "atom-mascot";
   host.style.display = "none";
   const shadow = host.attachShadow({ mode: "closed" });
-  shadow.innerHTML = `<style>
-    :host { all: initial; position: fixed; z-index: 2147483000; pointer-events: none;
-            display: none; left: 0; top: 0; }
-    canvas { display: block; }
-    #hit { position: absolute; left: 28%; width: 44%; top: 34%; height: 52%;
-           pointer-events: auto; cursor: pointer; }
-  </style><canvas></canvas><div id="hit"></div>`;
+  shadow.innerHTML = `<style>:host{all:initial;position:fixed;z-index:2147483000;pointer-events:none;display:none;left:0;top:0}canvas{display:block}#hit{position:absolute;left:28%;width:44%;top:34%;height:52%;pointer-events:auto;cursor:pointer}</style><canvas></canvas><div id="hit"></div>`;
   const canvas = shadow.querySelector("canvas");
   const hit = shadow.querySelector("#hit");
   const ctx = canvas.getContext("2d");
@@ -322,75 +326,63 @@
     }
   };
 
-  const updateTitle = () => {
-    const skinInfo = skinNames.length >= 2 ? ` · ${skin || "atom"} skin` : "";
-    hit.title = `Atom${skinInfo} (click to dance, Alt+click to switch side${skinNames.length >= 2 ? ", Shift+click to switch skin" : ""})`;
-  };
+  const isVis = () => Boolean(sheet && activated && host.style.display !== "none" && !document.hidden);
 
+  function setSkin(nextName) {
+    if (!skinNames.includes(nextName)) return false;
+    if (nextName === skin) return true;
+    const prevSheet = sheet, prevFrame = frame, now = performance.now();
+    const visible = isVis();
+    skin = nextName; writeStorage("atom.skin", skin); syncedSkin = null; updateTitle();
+    const ready = Boolean(sheets[skin] && Object.keys(sheets[skin]).length);
+    if (visible) {
+      if (curtain && (!curtain.openAt || now < curtain.openAt)) curtain.openAt = ready ? Math.max(now, curtain.startedAt + CUR[0] + CUR[1]) : 0;
+      else curtain = { from: prevSheet, fromFrame: prevFrame, startedAt: now, openAt: ready ? now + CUR[0] + CUR[1] : 0 };
+    }
+    if (oneShot && !REACTIONS.has(playing)) { playing = effectiveBase(); oneShot = false; }
+    idleSince = now;
+    if (ready && activated) { start(playing || effectiveBase(), { isOneShot: oneShot }); blend = null; place(); paintVisible(now); }
+    else if (curtain) paintVisible(now);
+    labApi?.refresh();
+    return true;
+  }
+  const openMenu = (x, y) => {
+    if (destroyed || !activated) return;
+    menuPt = [x, y];
+    if (labApi) labApi.toggleMenu(x, y); else labReq = labReq === "menu" ? null : "menu";
+  };
+  const openLab = () => {
+    if (destroyed || !activated) return;
+    if (labApi) { labReq = null; labApi.open(); } else labReq = "lab";
+  };
+  const closeLab = () => { labReq = null; if (labApi) labApi.close(); };
+  const updateTitle = () => {
+    const s = skinNames.length >= 2 ? ` · ${skin || "atom"} skin` : "";
+    hit.title = `Atom${s} (click to dance, right-click for Atom Lab, Alt+click to switch side${skinNames.length >= 2 ? ", Shift+click to switch skin" : ""})`;
+  };
+  const triggerDance = () => {
+    if (moodBlocksDance() || limitSleep) return;
+    if (INSTANT_EXIT.has(playing) && sheet) { start("dance", { isOneShot: true }); paintVisible(); }
+    else window.__atom.react("dance");
+  };
+  const toggleAlign = () => { align = align === "left" ? "right" : "left"; writeStorage("atom.align", align); updateTitle(); place(); };
+  hit.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); openMenu(e.clientX, e.clientY); });
   hit.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (e.altKey) {
-      align = align === "left" ? "right" : "left";
-      writeStorage("atom.align", align);
-      updateTitle();
-      place();
-      return;
-    }
-    if (e.shiftKey && skinNames.length >= 2) {
-      skin = skinNames[(skinNames.indexOf(skin) + 1) % skinNames.length];
-      writeStorage("atom.skin", skin);
-      updateTitle();
-      if (sheets[skin] && playing) {
-        start(playing);
-        paintVisible();
-      }
-      return;
-    }
-    if (moodBlocksDance() || limitSleep) return;
-    if (INSTANT_EXIT.has(playing) && sheet) {
-      start("dance", { isOneShot: true });
-      paintVisible();
-    } else {
-      window.__atom.react("dance");
-    }
+    if (labApi) labApi.closeMenu(); else if (labReq === "menu") labReq = null;
+    if (e.altKey) return toggleAlign();
+    if (e.shiftKey && skinNames.length >= 2) return setSkin(skinNames[(skinNames.indexOf(skin) + 1) % skinNames.length]);
+    triggerDance();
   });
   updateTitle();
 
-  let base = "idle";
-  let playing = null;
-  let oneShot = false;
-  let pending = null;
-  let reaction = null;
-  let lastReactId = null;
-  let sheet = null;
-  let blend = null;
-  let frame = 0;
-  let nextAt = 0;
-  let widthCss = SIZE.min;
-  let idleSince = performance.now();
-  let stateSince = 0;
-  let activated = false;
-  let destroyed = false;
-  let timerId = 0;
-  let rafId = 0;
-  let placeTimer = 0;
-  let waitTimer = 0;
-  let listenTimer = 0;
-  let dwellTimer = 0;
-  let listening = false;
-  let mood = null;
-  let moodColor = null;
-  let moodFrom = 0;
-  let moodTo = 0;
-  let moodAt = 0;
-  let hookModel = "";
-  let hookLimited = false;
+  let base = "idle", playing = null, oneShot = false, pending = null, reaction = null, lastReactId = null;
+  let sheet = null, sheetSkin = null, blend = null, curtain = null, frame = 0, nextAt = 0, widthCss = SIZE.min;
+  let idleSince = performance.now(), stateSince = 0, activated = false, destroyed = false, timerId = 0, rafId = 0;
+  let placeTimer = 0, waitTimer = 0, listenTimer = 0, dwellTimer = 0, listening = false;
+  let mood = null, moodColor = null, moodFrom = 0, moodTo = 0, moodAt = 0;
+  let hookModel = "", hookLimited = false, uiModel = "", domLimited = false, limitSleep = false, limitScanTimer = 0, prevDomBanner = "";
   const limitedModels = new Set();
-  let uiModel = "";
-  let domLimited = false;
-  let limitSleep = false;
-  let limitScanTimer = 0;
-  let prevDomBanner = "";
   const moodBlocksDance = () => Boolean(mood || playing === "angry" || playing === "sad");
 
   const mNorm = (s) => String(s || "").toLowerCase().replace(/^models\//, "").replace(/[^a-z0-9]+/g, " ").trim();
@@ -577,6 +569,7 @@
     oneShot = isOneShot;
     if (pending === state) pending = null;
     sheet = nextSheet;
+    sheetSkin = nextSheet ? skin : null;
     frame = 0;
     nextAt = 0;
     if (moodColor && sheet) ensureMoodBitmap(skin, state, sheet, moodColor);
@@ -599,6 +592,11 @@
     const [lo, hi] = loopRange(sheet);
     const hasOutro = hi < sheet.durations.length - 1;
     const dwellHold = !reaction && !oneShot && !INSTANT_EXIT.has(playing) && now - stateSince < MIN_DWELL_MS;
+
+    if (!oneShot && frame < lo && INSTANT_EXIT.has(playing) && (reaction || pending)) {
+      finishState();
+      return true;
+    }
 
     if (frame >= lo && frame <= hi) {
       if (!oneShot && (reaction || (pending && !dwellHold))) {
@@ -657,15 +655,19 @@
     }
   }
 
+  function curtainPhase(now = performance.now()) {
+    if (!curtain) return null;
+    const el = now - curtain.startedAt;
+    if (el < CUR[0]) return "closing";
+    if (!curtain.openAt || now < curtain.openAt) return "holding";
+    if (now < curtain.openAt + CUR[2]) return "opening";
+    return now < curtain.openAt + CUR[2] + CUR[3] ? "fading" : null;
+  }
+
   function scheduleTick() {
     cancelTick();
-    if (destroyed || !activated || document.hidden || !sheet || host.style.display === "none") {
-      return;
-    }
-    if (blend || moodRamping(performance.now())) {
-      rafId = requestAnimationFrame(tick);
-      return;
-    }
+    if (destroyed || !activated || document.hidden || !sheet || host.style.display === "none") return;
+    if (blend || moodRamping(performance.now()) || curtain) { rafId = requestAnimationFrame(tick); return; }
     const delay = nextAt ? Math.max(0, nextAt - performance.now()) : 0;
     if (delay <= 20) {
       rafId = requestAnimationFrame(tick);
@@ -688,7 +690,7 @@
       place();
       if (host.style.display === "none") return;
     }
-    let needsDraw = Boolean(blend) || moodRamping(now);
+    let needsDraw = Boolean(blend) || moodRamping(now) || Boolean(curtain);
     if (nextAt === 0) {
       nextAt = now + frameMs();
       needsDraw = true;
@@ -743,6 +745,51 @@
     }
   }
 
+  function drawCurtain(now, w, h) {
+    const el = now - curtain.startedAt;
+    let edge = 124, visS = null, visF = 0, rodA = 1, hand = false, rustle = 0, spark = 0, adx = 0, ady = 0, atilt = 0;
+    if (el < CUR[0]) {
+      visS = curtain.from; visF = curtain.fromFrame; rodA = Math.min(1, el / 90);
+      if (el < 110) {
+        const g = smooth01(el / 110);
+        adx = 26 * g; ady = -Math.sin(g * Math.PI) * 3; atilt = 0.1 * g; hand = g > 0.55;
+      } else {
+        const p = smooth01((el - 110) / 430);
+        edge = 124 - 104 * p; adx = Math.max(-34, Math.min(26, edge - 98));
+        ady = -Math.abs(Math.sin(p * Math.PI * 3)) * 2.5; atilt = -0.15 * Math.sin(p * Math.PI); hand = p < 0.9;
+      }
+    } else if (!curtain.openAt || now < curtain.openAt) {
+      if (!curtain.openAt && el >= 3000) curtain.openAt = now;
+      edge = 20; rustle = Math.sin((el - CUR[0]) * 0.045) * 2.5; spark = 1;
+    } else if (now < curtain.openAt + CUR[2]) {
+      const q = smooth01((now - curtain.openAt) / CUR[2]);
+      edge = 20 + 104 * q; visS = sheet; visF = frame;
+      adx = -12 * (1 - smooth01(q * 1.6));
+      ady = -Math.sin(q * Math.PI) * 3; atilt = 0.11 * Math.sin(q * Math.PI); hand = q > 0.08 && q < 0.78;
+    } else if (now < curtain.openAt + CUR[2] + CUR[3]) {
+      visS = sheet; visF = frame; rodA = Math.max(0, 1 - (now - curtain.openAt - CUR[2]) / CUR[3]); spark = 2;
+    } else { curtain = null; return false; }
+    const sx = w / 150, sy = h / 120, open = Boolean(curtain.openAt && now >= curtain.openAt);
+    if (visS) {
+      const bow = Math.sin(smooth01((124 - edge) / 104) * Math.PI) * 11;
+      if (ctx.save && ctx.beginPath && ctx.rect && ctx.clip) { ctx.save(); ctx.beginPath(); ctx.rect(0, 0, Math.min(w, Math.round((edge + 2 + bow) * sx)), h); ctx.clip(); }
+      else if (ctx.save) ctx.save();
+      if (ctx.translate && ctx.rotate) { ctx.translate((75 + adx) * sx, (84 + ady) * sy); ctx.rotate(atilt); ctx.translate(-75 * sx, -84 * sy); }
+      drawSheetFrame(visS, visF, w, h, 1, now);
+      if (ctx.restore) ctx.restore();
+    }
+    if (labApi?.drawCurtain) labApi.drawCurtain(ctx, w, h, { edge, rodA, hand, rustle, spark, el, adx, ady, open });
+    else if (ctx.fillRect) {
+      const px = (x, y, rw, rh, c) => { ctx.fillStyle = c; ctx.fillRect(Math.round(x * sx), Math.round(y * sy), Math.max(1, Math.round(rw * sx)), Math.max(1, Math.round(rh * sy))); };
+      ctx.globalAlpha = rodA; px(16, 26, 118, 3, "#d4a238");
+      const cw = 130 - edge;
+      if (cw > 1) { px(edge, 31, cw, 76, "#d41c2c"); px(130 - Math.min(cw, 4), 31, Math.min(cw, 4), 76, "#8f0f1a"); px(edge, 105, cw, 2, "#f6c945"); }
+      if (hand) px(edge - 3, 73 + Math.round(ady * 0.5), 5, 5, "#2494f4");
+      ctx.globalAlpha = 1;
+    }
+    return true;
+  }
+
   function draw(now = performance.now()) {
     if (!sheet) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -757,6 +804,8 @@
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "low";
     ctx.clearRect(0, 0, w, h);
+
+    if (curtain && drawCurtain(now, w, h)) return;
 
     if (blend) {
       const t = Math.max(0, Math.min(1, (now - blend.startedAt) / blend.ms));
@@ -779,29 +828,39 @@
   let lastPlaceAt = 0;
   let domObserver = null;
   let waitObserver = null;
+  let footerObserver = null;
 
   const barResizeObserver = typeof ResizeObserver === "function"
     ? new ResizeObserver(() => place())
     : null;
 
   function observeBar(bar, box) {
-    if (!barResizeObserver || bar === observedBar) return;
-    for (const el of observedNodes) barResizeObserver.unobserve(el);
-    observedNodes = [];
+    if (bar === observedBar) return;
     observedBar = bar;
-    const seen = new Set();
-    const watch = (el) => {
-      if (!el || seen.has(el)) return;
-      seen.add(el);
-      observedNodes.push(el);
-      barResizeObserver.observe(el);
-    };
-    watch(bar);
-    watch(box);
-    // Watch pane/layout ancestors too so closing the side panel shifts Atom promptly even if bar width stays fixed.
-    for (let el = (box || bar).parentElement, i = 0; el && i < 6 && el !== document.documentElement; el = el.parentElement, i++) {
-      watch(el);
-      if (el === document.body) break;
+    if (barResizeObserver) {
+      for (const el of observedNodes) barResizeObserver.unobserve(el);
+      observedNodes = [];
+      const seen = new Set();
+      const watch = (el) => {
+        if (!el || seen.has(el)) return;
+        seen.add(el);
+        observedNodes.push(el);
+        barResizeObserver.observe(el);
+      };
+      watch(bar);
+      watch(box);
+      // Watch pane/layout ancestors too so closing the side panel shifts Atom promptly even if bar width stays fixed.
+      for (let el = (box || bar).parentElement, i = 0; el && i < 6 && el !== document.documentElement; el = el.parentElement, i++) {
+        watch(el);
+        if (el === document.body) break;
+      }
+    }
+    if (footerObserver) { footerObserver.disconnect(); footerObserver = null; }
+    if (typeof MutationObserver === "function") {
+      footerObserver = new MutationObserver(schedulePlace);
+      for (let el = box || bar, i = 0; el && i < 4 && el !== document.body && el !== document.documentElement && !isChat(el); el = el.parentElement, i++) {
+        footerObserver.observe(el, { childList: true });
+      }
     }
   }
 
@@ -830,6 +889,9 @@
   }
 
   function hideHost() {
+    curtain = null;
+    if (labApi) labApi.closeMenu();
+    else if (labReq === "menu") labReq = null;
     if (host.style.display !== "none") {
       host.style.display = "none";
       cancelTick();
@@ -859,9 +921,7 @@
     const height = (width * sheet.h) / sheet.w;
 
     // Lightweight modal occlusion check (avoids elementFromPoint forced reflows).
-    const modal = typeof document.querySelector === "function"
-      ? document.querySelector('[role="dialog"][aria-modal="true"], dialog[open]')
-      : null;
+    const modal = document.querySelector?.('[role="dialog"][aria-modal="true"], dialog[open]');
     if (modal && modal !== box && !box.contains(modal) && (typeof modal.contains !== "function" || !modal.contains(box))) {
       const mr = modal.getBoundingClientRect();
       if (mr.left < r.right && mr.right > r.left && mr.top < r.bottom && mr.bottom > r.top) {
@@ -874,27 +934,37 @@
       widthCss = width;
       draw();
     }
-    // Detect compact stacked cards directly above the prompt box (e.g. Queued Messages),
-    // while ignoring tall scrollable chat transcript containers.
+    // Detect compact stacked cards directly above the prompt box (e.g. Queued Messages / Steps),
+    // walking up footer wrappers and skipping 0px spacers while ignoring tall chat containers.
     let topAnchor = r.top;
-    for (let el = (bar !== box ? bar : box); el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
-      const prev = el.previousElementSibling;
-      if (prev && typeof prev.getBoundingClientRect === "function") {
-        const pr = prev.getBoundingClientRect();
-        if (
-          pr.height > 20 &&
-          pr.height < 260 &&
-          pr.width > 120 &&
-          Math.abs(pr.left - r.left) < 32 &&
-          Math.abs(pr.right - r.right) < 32 &&
-          pr.bottom <= topAnchor + 8 &&
-          topAnchor - pr.bottom < 24
-        ) {
-          topAnchor = pr.top;
-          if (barResizeObserver) barResizeObserver.observe(prev);
+    const trackObs = (node) => {
+      if (barResizeObserver && !observedNodes.includes(node)) {
+        observedNodes.push(node);
+        barResizeObserver.observe(node);
+      }
+    };
+    for (let el = (bar !== box ? bar : box), d = 0; el && d < 6 && el !== document.body && el !== document.documentElement; el = el.parentElement, d++) {
+      const p = el.parentElement;
+      if (!p || p === document.body || p === document.documentElement || isChat(p)) break;
+      const raw = p.children?.length ? p.children : [el.previousElementSibling];
+      const sibs = [...raw].filter((s) => s && s !== el && !isChat(s) && typeof s.getBoundingClientRect === "function");
+      for (let pass = 0, moved = 1; moved && pass < 5; pass++) {
+        moved = 0;
+        for (const s of sibs) {
+          const sr = s.getBoundingClientRect();
+          if (
+            sr.height > 16 && sr.height < 320 && sr.width > 120 &&
+            sr.left >= r.left - 48 && sr.right <= r.right + 48 &&
+            sr.right > r.left + 16 && sr.left < r.right - 16 &&
+            sr.bottom <= topAnchor + 8 && topAnchor - sr.bottom < 28 &&
+            sr.top < topAnchor
+          ) {
+            topAnchor = sr.top;
+            trackObs(s);
+            moved = 1;
+          }
         }
       }
-      if (el === box.parentElement) break;
     }
     const x = align === "left" ? Math.round(r.left + INSET) : Math.round(r.right - INSET - width);
     const y = Math.max(0, Math.round(topAnchor - height * (1 - SINK)));
@@ -931,13 +1001,32 @@
   // --- API for the launcher -------------------------------------------------------------
   window.__atom = {
     needSkin() {
-      if (destroyed || !activated || !skin || (sheets[skin] && sheets[skin].idle) || loadingSkin === skin) {
-        return null;
-      }
-      return skin;
+      if (destroyed || !activated || !skin) return null;
+      if (loadingSkin !== skin && (syncedSkin !== skin || !sheets[skin]?.idle)) return skin;
+      if (labReq === "menu" && !labApi) return { lab: true, previews: [] };
+      const previews = (labReq === "lab" || labApi?.isOpen()) ? skinNames.filter((n) => !sheets[n]?.idle) : null;
+      return previews && (!labApi || previews.length) ? { lab: !labApi, previews } : null;
+    },
+    setSkin, openLab, closeLab, openMenu,
+    __markSynced(n) { if (n === skin) syncedSkin = n; },
+    __mountLab(factory) {
+      if (destroyed || typeof factory !== "function") return;
+      if (labApi) labApi.destroy();
+      labApi = factory({
+        host, skinNames, getSkin: () => skin, selectSkin: setSkin,
+        getAlign: () => align, toggleAlign, canDance: () => !(moodBlocksDance() || limitSleep),
+        dance: triggerDance, getSheet: (n, st) => (sheets[n] && (sheets[n][st] || sheets[n].idle)) || null,
+        onClose: () => { if (labReq === "lab") labReq = null; },
+      });
+      if (!labApi) return;
+      if (labReq === "lab") { labReq = null; labApi.open(); }
+      else if (labReq === "menu") { labReq = null; labApi.openMenu(menuPt?.[0], menuPt?.[1]); }
     },
     setBase(state) {
-      if (state === base) return;
+      if (state === base) {
+        if (!oneShot && !reaction && playing && playing !== effectiveBase() && !pending) queueBase(effectiveBase());
+        return;
+      }
       base = state;
       if (state !== "idle" && state !== "closed") {
         listening = false;
@@ -992,15 +1081,27 @@
     },
     __loadState: loadState,
     __loadSkin: loadSkin,
+    __resetSkin(n) {
+      if (n !== skin) { delete sheets[n]; return; }
+      const now = performance.now();
+      if (isVis()) {
+        curtain = { from: sheet, fromFrame: frame, startedAt: now, openAt: 0 };
+        paintVisible(now);
+      }
+      sheets[n] = {};
+    },
     destroy() {
       destroyed = true;
       blend = null;
+      curtain = null;
       listening = false;
       mood = null;
       moodColor = null;
       hookLimited = false;
       domLimited = false;
       limitSleep = false;
+      labReq = null;
+      if (labApi) { labApi.destroy(); labApi = null; }
       cancelTick();
       if (placeTimer) { clearTimeout(placeTimer); placeTimer = 0; }
       if (waitTimer) { clearTimeout(waitTimer); waitTimer = 0; }
@@ -1009,6 +1110,7 @@
       if (limitScanTimer) { clearTimeout(limitScanTimer); limitScanTimer = 0; }
       if (waitObserver) { waitObserver.disconnect(); waitObserver = null; }
       if (domObserver) { domObserver.disconnect(); domObserver = null; }
+      if (footerObserver) { footerObserver.disconnect(); footerObserver = null; }
       if (barResizeObserver) barResizeObserver.disconnect();
       observedBar = null;
       observedNodes = [];
@@ -1034,6 +1136,7 @@
     get state() {
       return {
         skin,
+        skinTransition: curtainPhase(),
         align,
         playing,
         phase: currentPhase(),
@@ -1042,6 +1145,8 @@
         mood,
         listening,
         limitSleep,
+        labOpen: Boolean(labReq === "lab" || (labApi && labApi.isOpen())),
+        menuOpen: Boolean(labReq === "menu" || (labApi && labApi.isMenuOpen())),
         uiModel,
         pending,
         reaction,
@@ -1053,9 +1158,7 @@
     },
   };
 
-  const hasPromptBox = () =>
-    typeof document.querySelector === "function" &&
-    Boolean(document.querySelector('[data-testid="agent-input-box"]'));
+  const hasPromptBox = () => Boolean(document.querySelector?.('[data-testid="agent-input-box"]'));
 
   const mount = () => {
     if (!destroyed && !host.isConnected && document.documentElement) {
