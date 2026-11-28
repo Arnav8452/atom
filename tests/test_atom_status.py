@@ -381,6 +381,11 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(data["nested"], {"a": 1})
         self.assertTrue(os.path.exists(self.settings + ".atom-backup"))
 
+    def test_rerun_makes_no_backup(self) -> None:
+        self.assertEqual(self.setup(), 0)
+        self.assertEqual(self.setup(), 0)
+        self.assertFalse(os.path.exists(self.settings + ".atom-backup"))
+
     def test_refuses_to_replace_existing_status_line(self) -> None:
         mine = {"type": "command", "command": "~/my.sh"}
         self.write({"statusLine": mine})

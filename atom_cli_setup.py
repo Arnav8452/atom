@@ -148,7 +148,8 @@ def install(path: str, command: str, force: bool = False, dry_run: bool = False)
         with open(prev, "w", encoding="utf-8") as fh:
             json.dump({"statusLine": existing}, fh)
 
-    backup = backup_once(path)
+    # A re-run only refreshes Atom's own block, so there's nothing of yours to back up.
+    backup = None if is_atom_block(existing) else backup_once(path)
     data["statusLine"] = block
     save_settings(path, data)
     print(f"Atom is now the status line in {path}")
